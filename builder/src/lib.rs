@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
-use syn::{Data, DeriveInput, Field, Ident, parse_macro_input};
+use syn::{parse_macro_input, Data, DeriveInput, Field, Ident};
 
 #[proc_macro_derive(Builder)]
 pub fn derive(input: TokenStream) -> TokenStream {
@@ -12,19 +12,33 @@ pub fn derive(input: TokenStream) -> TokenStream {
         return TokenStream::new();
     };
 
-    let field_defs = data.fields.iter().map(|Field { vis, ident, colon_token, ty, .. }| quote! {
-        #vis #ident #colon_token Option<#ty>
-    });
+    let field_defs = data.fields.iter().map(
+        |Field {
+             vis,
+             ident,
+             colon_token,
+             ty,
+             ..
+         }| {
+            quote! {
+                #vis #ident #colon_token Option<#ty>
+            }
+        },
+    );
 
-    let field_setters = data.fields.iter().map(|Field { vis, ident, ty, .. }| quote! {
-        #vis fn #ident(&mut self, #ident: #ty) -> &mut Self {
-            self.#ident = Some(#ident);
-            self
+    let field_setters = data.fields.iter().map(|Field { vis, ident, ty, .. }| {
+        quote! {
+            #vis fn #ident(&mut self, #ident: #ty) -> &mut Self {
+                self.#ident = Some(#ident);
+                self
+            }
         }
     });
 
-    let field_inits = data.fields.iter().map(|Field { ident, .. }| quote! {
-        #ident: None
+    let field_inits = data.fields.iter().map(|Field { ident, .. }| {
+        quote! {
+            #ident: None
+        }
     });
 
     let expanded = quote! {
