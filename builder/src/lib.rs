@@ -1,7 +1,16 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Field, Ident};
+use syn::{
+    parse_macro_input, Data, DeriveInput, GenericArgument, Ident, PathArguments, Type, Visibility,
+};
+
+struct AnalyzedField<'a> {
+    vis: &'a Visibility,
+    ident: &'a Option<Ident>,
+    normalized_type: &'a Type,
+    is_optional: bool,
+}
 
 #[proc_macro_derive(Builder)]
 pub fn derive(input: TokenStream) -> TokenStream {
@@ -13,41 +22,77 @@ pub fn derive(input: TokenStream) -> TokenStream {
         return TokenStream::new();
     };
 
-    let field_defs = data.fields.iter().map(
-        |Field {
+    let fields: Vec<_> = data
+        .fields
+        .iter()
+        .map(|f| {
+            if let Type::Path(tp) = &f.ty {
+                if let Some(seg) = tp.path.segments.first() {
+                    if seg.ident.to_string().as_str() == "Option" {
+                        if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+                            if let Some(GenericArgument::Type(ty)) = ab.args.first() {
+                                return AnalyzedField {
+                                    vis: &f.vis,
+                                    ident: &f.ident,
+                                    normalized_type: ty,
+                                    is_optional: true,
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+            AnalyzedField {
+                vis: &f.vis,
+                ident: &f.ident,
+                normalized_type: &f.ty,
+                is_optional: false,
+            }
+        })
+        .collect();
+
+    let field_defs = fields.iter().map(
+        |AnalyzedField {
              vis,
              ident,
-             colon_token,
-             ty,
+             normalized_type,
              ..
          }| {
             quote! {
-                #vis #ident #colon_token Option<#ty>
+                #vis #ident: Option<#normalized_type>
             }
         },
     );
 
-    let field_setters = data.fields.iter().map(|Field { vis, ident, ty, .. }| {
-        quote! {
-            #vis fn #ident(&mut self, #ident: #ty) -> &mut Self {
-                self.#ident = Some(#ident);
-                self
+    let field_setters = fields.iter().map(
+        |AnalyzedField {
+             vis,
+             ident,
+             normalized_type,
+             ..
+         }| {
+            quote! {
+                #vis fn #ident(&mut self, #ident: #normalized_type) -> &mut Self {
+                    self.#ident = Some(#ident);
+                    self
+                }
+            }
+        },
+    );
+
+    let field_guards = fields.iter().map(|AnalyzedField { ident, is_optional,.. }| {
+        if *is_optional {
+            quote! {
+                let #ident = self.#ident.clone();
+            }
+        } else {
+            quote! {
+                let Some(#ident) = self.#ident.clone() else { return Err("".to_string().into()); };
             }
         }
     });
 
-    let field_guards = data.fields.iter().map(|Field { ident, .. }| {
-        quote! {
-            let Some(#ident) = self.#ident.clone() else { return Err("".to_string().into()); };
-        }
-    });
-
-    let fields = data.fields.iter().map(|Field { ident, .. }| {
-        quote! {
-            #ident
-        }
-    });
-    let fields2 = fields.clone();
+    let field_idents: Vec<_> = fields.iter().map(|f| f.ident).collect();
 
     let expanded = quote! {
         #visibility struct #builder_ident {
@@ -61,7 +106,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 #(#field_guards)*
 
                 Ok(#ident {
-                    #(#fields,)*
+                    #(#field_idents,)*
                 })
             }
         }
@@ -69,7 +114,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         impl Command {
             pub fn builder() -> #builder_ident {
                 #builder_ident {
-                    #(#fields2: None,)*
+                    #(#field_idents: None,)*
                 }
             }
         }
