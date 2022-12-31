@@ -16,6 +16,13 @@ pub fn derive(input: TokenStream) -> TokenStream {
         #vis #ident #colon_token Option<#ty>
     });
 
+    let field_setters = data.fields.iter().map(|Field { vis, ident, ty, .. }| quote! {
+        #vis fn #ident(&mut self, #ident: #ty) -> &mut Self {
+            self.#ident = Some(#ident);
+            self
+        }
+    });
+
     let field_inits = data.fields.iter().map(|Field { ident, .. }| quote! {
         #ident: None
     });
@@ -23,6 +30,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #visibility struct #builder_ident {
             #(#field_defs ,)*
+        }
+
+        impl #builder_ident {
+            #(#field_setters)*
         }
 
         impl Command {
