@@ -134,14 +134,29 @@ pub fn derive(input: TokenStream) -> TokenStream {
              ..
          }| {
             match kind {
-                FieldKind::Multiple => quote! {
-                    #vis fn #setter_ident(&mut self, #setter_ident: #normalized_type) -> &mut Self {
-                        self.#ident.push(#setter_ident);
-                        self
+                FieldKind::Multiple => {
+                    let each = (ident.as_ref().map(|i| i.to_string()) != setter_ident.as_ref().map(|i|i.to_string())).then_some(
+                        quote!{
+                            #vis fn #setter_ident(&mut self, #setter_ident: #normalized_type) -> &mut Self {
+                                self.#ident.push(#setter_ident);
+                                self
+                            }
+                        });
+                    let direct = quote!{
+                        #vis fn #ident(&mut self, #setter_ident: Vec<#normalized_type>) -> &mut Self {
+                            self.#ident = #setter_ident;
+                            self
+                        }
+                    };
+
+                    quote! {
+                        #each
+
+                        #direct
                     }
-                },
+                }
                 _ => quote! {
-                    #vis fn #setter_ident(&mut self, #setter_ident: #normalized_type) -> &mut Self {
+                    #vis fn #ident(&mut self, #ident: #normalized_type) -> &mut Self {
                         self.#ident = Some(#setter_ident);
                         self
                     }
