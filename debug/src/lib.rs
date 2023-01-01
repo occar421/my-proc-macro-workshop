@@ -1,11 +1,15 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
-use syn::{parse_macro_input, Attribute, Data, DeriveInput, Field, Lit, Meta};
+use syn::{
+    parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Field, GenericParam, Generics,
+    Lit, Meta,
+};
 
 #[proc_macro_derive(CustomDebug, attributes(debug))]
 pub fn derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+
     let target_ident = input.ident;
     let Data::Struct(data) = input.data else {
         return syn::Error::new(Span::call_site(), "Unsupported".to_string()).into_compile_error().into();
@@ -24,8 +28,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
     });
 
+    let generics = add_trait_bounds(input.generics);
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
     let extend = quote! {
-        impl std::fmt::Debug for #target_ident {
+        impl #impl_generics std::fmt::Debug for #target_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
                 f.debug_struct(stringify!(#target_ident))
                     #(#field_supplies)*
@@ -35,6 +42,15 @@ pub fn derive(input: TokenStream) -> TokenStream {
     };
 
     extend.into()
+}
+
+fn add_trait_bounds(mut generics: Generics) -> Generics {
+    for param in &mut generics.params {
+        if let GenericParam::Type(ref mut type_param) = *param {
+            type_param.bounds.push(parse_quote!(std::fmt::Debug));
+        }
+    }
+    generics
 }
 
 fn get_debug_format(attrs: &Vec<Attribute>) -> Option<String> {
