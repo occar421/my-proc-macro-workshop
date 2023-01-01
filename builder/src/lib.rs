@@ -30,7 +30,13 @@ pub fn derive(input: TokenStream) -> TokenStream {
         return TokenStream::new();
     };
 
-    let fields = analyze_fields(&data);
+    let fields: Vec<_> = match analyze_fields(&data) {
+        Ok(f) => f,
+        Err(e) => {
+            let mes = e.to_string();
+            return quote! { compile_error!(#mes) }.into();
+        }
+    };
 
     let builder_ident = format_ident!("{}Builder", input.ident);
     let target_addition_part = generate_target_addition_part(&input.ident, &builder_ident, &fields);
@@ -45,7 +51,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-fn analyze_fields(data: &DataStruct) -> Vec<Result<AnalyzedField, Box<dyn Error>>> {
+fn analyze_fields(data: &DataStruct) -> Result<Vec<AnalyzedField>, Box<dyn std::error::Error>> {
     data.fields
         .iter()
         .map(
@@ -118,20 +124,18 @@ fn check_special_type(ty: &Type) -> Option<(FieldKind, &Type)> {
 fn generate_target_addition_part(
     target_ident: &Ident,
     builder_ident: &Ident,
-    fields: &Vec<Result<AnalyzedField, Box<dyn Error>>>,
+    fields: &Vec<AnalyzedField>,
 ) -> TokenStream2 {
-    let field_inits = fields.iter().filter_map(|f| {
-        f.as_ref()
-            .map(|AnalyzedField { ident, kind, .. }| match kind {
-                FieldKind::Multiple => quote! {
+    let field_inits = fields
+        .iter()
+        .map(|AnalyzedField { ident, kind, .. }| match kind {
+            FieldKind::Multiple => quote! {
                 #ident: vec![]
-                },
-                _ => quote! {
+            },
+            _ => quote! {
                 #ident: None
-                },
-            })
-            .ok()
-    });
+            },
+        });
 
     quote! {
         impl #target_ident {
@@ -148,32 +152,28 @@ fn generate_builder_part(
     target_vis: &Visibility,
     target_ident: &Ident,
     builder_ident: &Ident,
-    fields: &Vec<Result<AnalyzedField, Box<dyn Error>>>,
+    fields: &Vec<AnalyzedField>,
 ) -> TokenStream2 {
-    let field_defs = fields.iter().filter_map(|f| {
-        f.as_ref()
-            .map(
-                |AnalyzedField {
-                     vis,
-                     ident: name,
-                     normalized_type,
-                     kind,
-                     ..
-                 }| {
-                    match kind {
-                        FieldKind::Multiple => quote! {
-                            #vis #name: Vec<#normalized_type>
-                        },
-                        _ => quote! {
-                            #vis #name: Option<#normalized_type>
-                        },
-                    }
+    let field_defs = fields.iter().map(
+        |AnalyzedField {
+             vis,
+             ident: name,
+             normalized_type,
+             kind,
+             ..
+         }| {
+            match kind {
+                FieldKind::Multiple => quote! {
+                    #vis #name: Vec<#normalized_type>
                 },
-            )
-            .ok()
-    });
+                _ => quote! {
+                    #vis #name: Option<#normalized_type>
+                },
+            }
+        },
+    );
 
-    let field_setters = fields.iter().filter_map(|f| f.as_ref().map(
+    let field_setters = fields.iter().map(
         |AnalyzedField {
              vis,
              ident,
@@ -211,10 +211,10 @@ fn generate_builder_part(
                     }
                 },
             }
-        }).ok()
+        },
     );
 
-    let field_guards = fields.iter().filter_map(|f| f.as_ref().map(|AnalyzedField { ident, kind, .. }| {
+    let field_guards = fields.iter().map(|AnalyzedField { ident, kind, .. }| {
         match kind {
             FieldKind::Normal => quote! {
                 let Some(#ident) = self.#ident.clone() else { return Err(stringify!(#ident).to_string().into()); };
@@ -223,11 +223,9 @@ fn generate_builder_part(
                 let #ident = self.#ident.clone();
             },
         }
-    }).ok());
+    });
 
-    let field_idents = fields
-        .iter()
-        .filter_map(|f| f.as_ref().map(|f| &f.ident).ok());
+    let field_idents = fields.iter().map(|f| &f.ident);
 
     quote! {
         #target_vis struct #builder_ident {
