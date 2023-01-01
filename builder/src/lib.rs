@@ -1,7 +1,6 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote};
-use std::error::Error;
 use syn::__private::TokenStream2;
 use syn::{
     parse_macro_input, Attribute, Data, DataStruct, DeriveInput, Field, GenericArgument, Ident,
@@ -32,10 +31,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let fields: Vec<_> = match analyze_fields(&data) {
         Ok(f) => f,
-        Err(e) => {
-            let mes = e.to_string();
-            return quote! { compile_error!(#mes) }.into();
-        }
+        Err(e) => return e.into_compile_error().into(),
     };
 
     let builder_ident = format_ident!("{}Builder", input.ident);
@@ -51,7 +47,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-fn analyze_fields(data: &DataStruct) -> Result<Vec<AnalyzedField>, Box<dyn std::error::Error>> {
+fn analyze_fields(data: &DataStruct) -> syn::Result<Vec<AnalyzedField>> {
     data.fields
         .iter()
         .map(
@@ -79,7 +75,7 @@ fn analyze_fields(data: &DataStruct) -> Result<Vec<AnalyzedField>, Box<dyn std::
         .collect()
 }
 
-fn get_designated_setter_name(attrs: &Vec<Attribute>) -> Result<Option<String>, Box<dyn Error>> {
+fn get_designated_setter_name(attrs: &Vec<Attribute>) -> syn::Result<Option<String>> {
     let Some(attr) = attrs.first() else {return Ok(None)};
     let Ok(meta) = attr.parse_meta() else { return Ok(None)};
     let Some(segment) = meta.path().segments.first() else {return Ok(None)};
@@ -94,7 +90,10 @@ fn get_designated_setter_name(attrs: &Vec<Attribute>) -> Result<Option<String>, 
                             return Ok(Some(str.value()));
                         }
                     } else {
-                        return Err("expected `builder(each = \"...\")".into());
+                        return Err(syn::Error::new_spanned(
+                            ml,
+                            "expected `builder(each = \"...\")`",
+                        ));
                     }
                 }
             }
