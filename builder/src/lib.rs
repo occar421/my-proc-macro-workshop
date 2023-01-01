@@ -9,10 +9,10 @@ use syn::{
 
 struct AnalyzedField {
     vis: Visibility,
-    name: String,
+    ident: Ident,
     normalized_type: Type,
     kind: FieldKind,
-    setter_name: String,
+    setter_ident: Ident,
 }
 
 enum FieldKind {
@@ -55,20 +55,17 @@ fn analyze_fields(data: &DataStruct) -> Vec<AnalyzedField> {
                  ty,
                  ..
              }| {
-                let name = ident
-                    .clone()
-                    .expect("anonymous field is unsupported")
-                    .to_string();
-                let setter_name = get_designated_setter_name(attrs).unwrap_or(name.clone());
+                let ident = ident.clone().expect("anonymous field is unsupported");
+                let setter_name = get_designated_setter_name(attrs).unwrap_or(ident.to_string());
                 let (kind, normalized_type) =
                     check_special_type(ty).unwrap_or((FieldKind::Normal, ty));
 
                 AnalyzedField {
                     vis: vis.clone(),
-                    name,
+                    ident,
                     normalized_type: normalized_type.clone(),
                     kind,
-                    setter_name,
+                    setter_ident: Ident::new(&setter_name, Span::call_site()),
                 }
             },
         )
@@ -118,12 +115,12 @@ fn generate_target_addition_part(
 ) -> TokenStream2 {
     let field_inits = fields
         .iter()
-        .map(|AnalyzedField { name, kind, .. }| match kind {
+        .map(|AnalyzedField { ident, kind, .. }| match kind {
             FieldKind::Multiple => quote! {
-                #name: vec![]
+                #ident: vec![]
             },
             _ => quote! {
-                #name: None
+                #ident: None
             },
         });
 
@@ -147,7 +144,7 @@ fn generate_builder_part(
     let field_defs = fields.iter().map(
         |AnalyzedField {
              vis,
-             name,
+             ident: name,
              normalized_type,
              kind,
              ..
@@ -166,24 +163,24 @@ fn generate_builder_part(
     let field_setters = fields.iter().map(
         |AnalyzedField {
              vis,
-             name,
+             ident,
              normalized_type,
-             setter_name,
+             setter_ident,
              kind,
              ..
          }| {
             match kind {
                 FieldKind::Multiple => {
-                    let each = (name != setter_name).then_some(
+                    let each = (ident.to_string() != setter_ident.to_string()).then_some(
                         quote!{
-                            #vis fn #setter_name(&mut self, #setter_name: #normalized_type) -> &mut Self {
-                                self.#name.push(#setter_name);
+                            #vis fn #setter_ident(&mut self, #setter_ident: #normalized_type) -> &mut Self {
+                                self.#ident.push(#setter_ident);
                                 self
                             }
                         });
                     let direct = quote!{
-                        #vis fn #name(&mut self, #setter_name: Vec<#normalized_type>) -> &mut Self {
-                            self.#name = #setter_name;
+                        #vis fn #ident(&mut self, #setter_ident: Vec<#normalized_type>) -> &mut Self {
+                            self.#ident = #setter_ident;
                             self
                         }
                     };
@@ -195,8 +192,8 @@ fn generate_builder_part(
                     }
                 }
                 _ => quote! {
-                    #vis fn #name(&mut self, #name: #normalized_type) -> &mut Self {
-                        self.#name = Some(#setter_name);
+                    #vis fn #ident(&mut self, #ident: #normalized_type) -> &mut Self {
+                        self.#ident = Some(#setter_ident);
                         self
                     }
                 },
@@ -204,18 +201,18 @@ fn generate_builder_part(
         },
     );
 
-    let field_guards = fields
-        .iter()
-        .map(|AnalyzedField { name, kind, .. }| match kind {
+    let field_guards = fields.iter().map(|AnalyzedField { ident, kind, .. }| {
+        match kind {
             FieldKind::Normal => quote! {
-                let Some(#name) = self.#name.clone() else { return Err(stringify!(#name).to_string().into()); };
+                let Some(#ident) = self.#ident.clone() else { return Err(stringify!(#ident).to_string().into()); };
             },
             FieldKind::Optional | FieldKind::Multiple => quote! {
-                let #name = self.#name.clone();
+                let #ident = self.#ident.clone();
             },
-        });
+        }
+    });
 
-    let field_idents = fields.iter().map(|f| &f.name);
+    let field_idents = fields.iter().map(|f| &f.ident);
 
     quote! {
         #target_vis struct #builder_ident {
