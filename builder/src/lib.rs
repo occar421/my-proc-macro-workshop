@@ -132,7 +132,7 @@ fn generate_target_addition_part(
                 #ident: vec![]
             },
             _ => quote! {
-                #ident: None
+                #ident: std::option::Option::None
             },
         });
 
@@ -166,7 +166,7 @@ fn generate_builder_part(
                     #vis #name: Vec<#normalized_type>
                 },
                 _ => quote! {
-                    #vis #name: Option<#normalized_type>
+                    #vis #name: std::option::Option<#normalized_type>
                 },
             }
         },
@@ -205,7 +205,7 @@ fn generate_builder_part(
                 }
                 _ => quote! {
                     #vis fn #ident(&mut self, #ident: #normalized_type) -> &mut Self {
-                        self.#ident = Some(#setter_ident);
+                        self.#ident = std::option::Option::Some(#setter_ident);
                         self
                     }
                 },
@@ -216,7 +216,7 @@ fn generate_builder_part(
     let field_guards = fields.iter().map(|AnalyzedField { ident, kind, .. }| {
         match kind {
             FieldKind::Normal => quote! {
-                let Some(#ident) = self.#ident.clone() else { return Err(stringify!(#ident).to_string().into()); };
+                let Some(#ident) = self.#ident.clone() else { return std::result::Result::Err(stringify!(#ident).to_string().into()); };
             },
             FieldKind::Optional | FieldKind::Multiple => quote! {
                 let #ident = self.#ident.clone();
@@ -234,10 +234,10 @@ fn generate_builder_part(
         impl #builder_ident {
             #(#field_setters)*
 
-            pub fn build(&mut self) -> Result<#target_ident, Box<dyn std::error::Error>> {
+            pub fn build(&mut self) -> std::result::Result<#target_ident, std::boxed::Box<dyn std::error::Error>> {
                 #(#field_guards)*
 
-                Ok(#target_ident {
+                std::result::Result::Ok(#target_ident {
                     #(#field_idents,)*
                 })
             }
