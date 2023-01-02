@@ -1,3 +1,5 @@
+#![feature(never_type)]
+
 use proc_macro::TokenStream;
 use proc_macro2::Delimiter::Parenthesis;
 use proc_macro2::{Group, Ident, Literal, TokenStream as TokenStream2, TokenTree};
@@ -55,7 +57,7 @@ fn replace(
     let mut ts = TokenStream2::new();
 
     while let Some(t0) = iter.next() {
-        match &t0 {
+        let _: ! = match &t0 {
             TokenTree::Group(g) => {
                 let mut new_group = Group::new(
                     g.delimiter(),
@@ -92,6 +94,9 @@ fn replace(
                         }
                     }
                 }
+
+                ts.append(t0);
+                continue;
             }
             TokenTree::Punct(punct) if punct.as_char() == '#' => {
                 if let Some(TokenTree::Group(paren_group)) = iter.next_if(|t1| match t1 {
@@ -125,11 +130,15 @@ fn replace(
                         continue;
                     }
                 }
-            }
-            _ => {}
-        }
 
-        ts.append(t0);
+                ts.append(t0);
+                continue;
+            }
+            _ => {
+                ts.append(t0);
+                continue;
+            }
+        };
     }
 
     Ok(ts)
