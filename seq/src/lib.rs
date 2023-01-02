@@ -1,7 +1,8 @@
 use proc_macro::TokenStream;
-use proc_macro2::{Group, Ident, Literal, TokenStream as TokenStream2, TokenTree};
-use quote::quote;
+use proc_macro2::{Group, Ident, Literal, Span, TokenStream as TokenStream2, TokenTree};
+use quote::{quote, quote_spanned};
 use syn::parse::{Parse, ParseStream};
+use syn::spanned::Spanned;
 use syn::token::Brace;
 use syn::{braced, parse_macro_input, LitInt, Token};
 
@@ -31,7 +32,9 @@ fn replace(ts: TokenStream2, var: (Ident, usize)) -> TokenStream2 {
     ts.into_iter()
         .map(|t| match t {
             TokenTree::Group(g) => {
-                TokenTree::Group(Group::new(g.delimiter(), replace(g.stream(), var.clone())))
+                let mut new_group = Group::new(g.delimiter(), replace(g.stream(), var.clone()));
+                new_group.set_span(g.span());
+                TokenTree::Group(new_group)
             }
             TokenTree::Ident(ident) if ident.to_string() == var.0.to_string() => {
                 TokenTree::Literal(Literal::usize_unsuffixed(var.1))
