@@ -2,17 +2,20 @@ use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::quote;
 use std::collections::HashSet;
+use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
+use syn::punctuated::Punctuated;
+use syn::token::Colon2;
 use syn::{
     parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Field, GenericArgument,
-    GenericParam, Generics, Lit, Meta, PathArguments, Type,
+    GenericParam, Generics, Lit, Meta, PathArguments, PathSegment, Type,
 };
 
 struct CompIdent(Ident);
 
 impl Clone for CompIdent {
     fn clone(&self) -> Self {
-        CompIdent(self.0.clone())
+        Self(self.0.clone())
     }
 }
 
@@ -30,6 +33,36 @@ impl Hash for CompIdent {
     }
 }
 
+struct IdentSegments(Vec<Ident>);
+
+impl Debug for IdentSegments {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("IdentSegments").field(&self.0).finish()
+    }
+}
+
+impl Clone for IdentSegments {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl PartialEq<Self> for IdentSegments {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl Eq for IdentSegments {}
+
+impl Hash for IdentSegments {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for i in self.0.iter() {
+            i.hash(state);
+        }
+    }
+}
+
 #[proc_macro_derive(CustomDebug, attributes(debug))]
 pub fn derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -43,10 +76,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
         .generics
         .params
         .iter()
-        .filter_map(|p| CompIdent(wrap_match!(p => GenericParam::Type)?.ident.clone()).into())
+        .filter_map(|p| wrap_match!(p => GenericParam::Type)?.ident.clone().into())
         .collect();
 
-    let mut used_type_params = HashSet::<CompIdent>::new();
+    let mut used_type_params = HashSet::<IdentSegments>::new();
 
     let field_supplies: Vec<_> = data
         .fields
@@ -60,7 +93,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     return quote!();
                 };
 
-                used_type_params.extend(valid_types.into_iter().map(CompIdent));
+                used_type_params.extend(valid_types.into_iter());
 
                 let debug_format = get_debug_format(attrs);
 
@@ -77,11 +110,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
         .collect();
 
     let used_generics_names: HashSet<_> = target_generics_params
-        .intersection(&used_type_params)
         .into_iter()
-        .cloned()
+        .filter(|ident| used_type_params.contains(&IdentSegments(vec![ident.clone()])))
+        .map(CompIdent)
         .collect();
-
     let generics = add_trait_bounds(input.generics, &used_generics_names);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
@@ -109,22 +141,22 @@ fn add_trait_bounds(mut generics: Generics, used_generics_names: &HashSet<CompId
     generics
 }
 
-fn get_valid_types(ty: &Type) -> Vec<Ident> {
+fn get_valid_types(ty: &Type) -> Vec<IdentSegments> {
     return get_valid_types_inner(ty).unwrap_or(vec![]);
 
-    fn get_valid_types_inner(ty: &Type) -> Option<Vec<Ident>> {
+    fn get_valid_types_inner(ty: &Type) -> Option<Vec<IdentSegments>> {
         let tp = match ty {
             Type::Path(tp) => tp,
             Type::Reference(tr) => wrap_match!(tr.elem.as_ref() => Type::Path)?,
             _ => return None,
         };
-        let ps = tp.path.segments.first()?;
-        let ident = ps.ident.clone();
-        match ident.to_string().as_str() {
+        let ident_segments = get_ident_segments(&tp.path.segments);
+        let ps = tp.path.segments.last()?; // naive
+        match ps.ident.to_string().as_str() {
             "PhantomData" => None,
             _ => match &ps.arguments {
                 PathArguments::AngleBracketed(ab) => {
-                    let mut v = vec![ident];
+                    let mut v = vec![IdentSegments(ident_segments)];
                     v.extend(
                         ab.args
                             .iter()
@@ -137,9 +169,13 @@ fn get_valid_types(ty: &Type) -> Vec<Ident> {
                 }
                 .into(),
                 PathArguments::Parenthesized(_) => unimplemented!(),
-                PathArguments::None => vec![ident].into(),
+                PathArguments::None => vec![IdentSegments(ident_segments)].into(),
             },
         }
+    }
+
+    fn get_ident_segments(segments: &Punctuated<PathSegment, Colon2>) -> Vec<Ident> {
+        segments.iter().map(|s| s.ident.clone()).collect()
     }
 }
 
