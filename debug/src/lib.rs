@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use syn::{
     parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Field, GenericArgument,
-    GenericParam, Generics, Lit, Meta, Path, PathArguments, Type,
+    GenericParam, Generics, Lit, Meta, NestedMeta, Path, PathArguments, Type, WherePredicate,
 };
 
 #[proc_macro_derive(CustomDebug, attributes(debug))]
@@ -15,6 +15,45 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let target_ident = input.ident;
     let Data::Struct(data) = input.data else {
         return syn::Error::new(Span::call_site(), "Unsupported".to_string()).into_compile_error().into();
+    };
+
+    let target_custom_where_predicates = input
+        .attrs
+        .iter()
+        .map(|a| -> syn::Result<Option<_>> {
+            match a.parse_meta()? {
+                Meta::List(l) => match l.path.get_ident() {
+                    Some(ident) if ident == "debug" => {
+                        let nm = l.nested.first().ok_or(syn::Error::new_spanned(&l, "?"))?;
+                        let meta = wrap_match!(nm => NestedMeta::Meta)
+                            .ok_or(syn::Error::new_spanned(nm, "??"))?;
+                        let nv = wrap_match!(meta => Meta::NameValue)
+                            .ok_or(syn::Error::new_spanned(meta, "???"))?;
+                        let ident = nv
+                            .path
+                            .get_ident()
+                            .ok_or(syn::Error::new_spanned(&nv.path, "????"))?;
+                        if ident.to_string() != "bound" {
+                            return Err(syn::Error::new_spanned(nv, "should be `bound = (...)`"));
+                        }
+                        if let Lit::Str(str) = &nv.lit {
+                            let str = str.token().to_string();
+                            let str = str.trim_matches(|c| !char::is_alphanumeric(c));
+                            let w = syn::parse_str::<WherePredicate>(&str)?;
+                            Ok(Some(w))
+                        } else {
+                            Err(syn::Error::new_spanned(&nv.lit, "invalid format"))
+                        }
+                    }
+                    _ => Ok(None),
+                },
+                _ => unimplemented!(),
+            }
+        })
+        .collect::<Result<Vec<_>, _>>();
+    let target_custom_where_predicates: Vec<_> = match target_custom_where_predicates {
+        Ok(x) => x.into_iter().filter_map(|x| x).collect(),
+        Err(e) => return e.into_compile_error().into(),
     };
 
     let target_generics_params: HashSet<_> = input
@@ -81,7 +120,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let generics = add_trait_bounds(input.generics, &used_generics_names, &assoc_target_names);
+    let generics = add_trait_bounds(
+        input.generics,
+        &used_generics_names,
+        &assoc_target_names,
+        &target_custom_where_predicates,
+    );
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let extend = quote! {
@@ -128,7 +172,9 @@ fn add_trait_bounds(
     mut generics: Generics,
     used_generics_names: &HashSet<String>,
     assoc_target_names: &Vec<&CompPath>,
+    target_custom_where_predicates: &Vec<WherePredicate>,
 ) -> Generics {
+    dbg!(&used_generics_names);
     for param in &mut generics.params {
         if let GenericParam::Type(ref mut type_param) = *param {
             if used_generics_names.contains(&type_param.ident.to_string()) {
@@ -140,6 +186,9 @@ fn add_trait_bounds(
     let punctuated = &mut generics.make_where_clause().predicates;
     for CompPath(path) in assoc_target_names {
         punctuated.push(parse_quote!(#path: std::fmt::Debug));
+    }
+    for predicate in target_custom_where_predicates {
+        punctuated.push(predicate.clone());
     }
 
     generics
