@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use syn::__private::TokenStream2;
 use syn::parse::{Parse, ParseStream};
 use syn::{braced, parse_macro_input, Token};
 
@@ -16,6 +17,7 @@ struct SeqInput {
     range_token: Token![..],
     end: syn::LitInt,
     brace_token: syn::token::Brace,
+    tokens: TokenStream2,
 }
 
 impl Parse for SeqInput {
@@ -28,6 +30,7 @@ impl Parse for SeqInput {
             range_token: input.parse()?,
             end: input.parse()?,
             brace_token: braced!(content in input),
+            tokens: content.parse()?,
         })
     }
 }
