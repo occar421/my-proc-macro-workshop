@@ -78,7 +78,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                  ident, attrs, ty, ..
              }| {
                 let valid_types = get_valid_types(ty);
-                if valid_types.len() == 0 {
+                if valid_types.is_empty() {
                     return quote!();
                 };
 
@@ -97,6 +97,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
             },
         )
         .collect();
+
+    if !target_custom_where_predicates.is_empty() {
+        used_type_params.clear();
+    }
 
     let assoc_target_names: Vec<_> = used_type_params
         .iter()
@@ -174,7 +178,6 @@ fn add_trait_bounds(
     assoc_target_names: &Vec<&CompPath>,
     target_custom_where_predicates: &Vec<WherePredicate>,
 ) -> Generics {
-    dbg!(&used_generics_names);
     for param in &mut generics.params {
         if let GenericParam::Type(ref mut type_param) = *param {
             if used_generics_names.contains(&type_param.ident.to_string()) {
