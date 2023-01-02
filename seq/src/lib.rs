@@ -19,8 +19,6 @@ pub fn seq(input: TokenStream) -> TokenStream {
         Err(x) => return x.into_compile_error().into(),
     };
 
-    dbg!(&input.body);
-
     let generated_codes = (start..end).map(|i| replace(input.body.clone(), (input.var.clone(), i)));
 
     (quote! {
@@ -34,7 +32,7 @@ fn replace(ts: TokenStream2, var: (Ident, usize)) -> TokenStream2 {
     let mut ts = TokenStream2::new();
 
     while let Some(t) = iter.next() {
-        match t {
+        match &t {
             TokenTree::Group(g) => {
                 let mut new_group = Group::new(g.delimiter(), replace(g.stream(), var.clone()));
                 new_group.set_span(g.span());
@@ -43,7 +41,29 @@ fn replace(ts: TokenStream2, var: (Ident, usize)) -> TokenStream2 {
             TokenTree::Ident(ident) if ident.to_string() == var.0.to_string() => {
                 ts.append(TokenTree::Literal(Literal::usize_unsuffixed(var.1)))
             }
-            x => ts.append(x),
+            TokenTree::Ident(ident) => {
+                if let Some(tilde) = iter.next_if(|x| match x {
+                    TokenTree::Punct(punct) if punct.as_char() == '~' => true,
+                    _ => false,
+                }) {
+                    match iter.next() {
+                        Some(TokenTree::Ident(v)) if v.to_string() == var.0.to_string() => {
+                            let new_ident = Ident::new(
+                                format!("{}{}", ident.to_string(), var.1).as_str(),
+                                ident.span(),
+                            );
+                            ts.append(new_ident);
+                        }
+                        _ => {
+                            return syn::Error::new_spanned(tilde, "invalid usage of `~`")
+                                .into_compile_error()
+                        }
+                    }
+                } else {
+                    ts.append(t);
+                }
+            }
+            _ => ts.append(t),
         }
     }
 
@@ -53,10 +73,13 @@ fn replace(ts: TokenStream2, var: (Ident, usize)) -> TokenStream2 {
 #[derive(Debug)]
 struct SeqInput {
     var: Ident,
+    #[allow(dead_code)]
     in_token: Token![in],
     start: LitInt,
+    #[allow(dead_code)]
     range_token: Token![..],
     end: LitInt,
+    #[allow(dead_code)]
     brace_token: Brace,
     body: TokenStream2,
 }
