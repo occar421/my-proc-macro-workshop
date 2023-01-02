@@ -1,4 +1,4 @@
-use proc_macro::TokenStream;
+use proc_macro::{Ident, TokenStream};
 use proc_macro2::Span;
 use quote::quote;
 use std::collections::HashSet;
@@ -6,7 +6,7 @@ use syn::punctuated::Punctuated;
 use syn::token::Colon2;
 use syn::{
     parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Field, GenericArgument,
-    GenericParam, Generics, Lit, Meta, PathArguments, PathSegment, Type,
+    GenericParam, Generics, Lit, Meta, PathArguments, PathSegment, Type, WhereClause,
 };
 
 #[proc_macro_derive(CustomDebug, attributes(debug))]
@@ -22,7 +22,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
         .generics
         .params
         .iter()
-        .filter_map(|p| wrap_match!(p => GenericParam::Type)?.ident.clone().into())
+        .filter_map(|p| {
+            wrap_match!(p => GenericParam::Type)?
+                .ident
+                .to_string()
+                .into()
+        })
         .collect();
 
     let mut used_type_params = HashSet::<Vec<String>>::new();
@@ -55,16 +60,19 @@ pub fn derive(input: TokenStream) -> TokenStream {
         )
         .collect();
 
-    let used_generics_names: HashSet<_> = target_generics_params
-        .into_iter()
-        .filter_map(|ident| {
-            let name = ident.to_string();
-            used_type_params
-                .contains(&vec![name.clone()])
-                .then_some(name)
+    let assoc_target_names: Vec<_> = used_type_params
+        .iter()
+        .filter(|p| match p.first() {
+            Some(x) if target_generics_params.contains(x) => true,
+            _ => false,
         })
         .collect();
-    let generics = add_trait_bounds(input.generics, &used_generics_names);
+    let used_generics_names: HashSet<_> = target_generics_params
+        .into_iter()
+        .filter(|name| used_type_params.contains(&vec![name.clone()]))
+        .collect();
+
+    let generics = add_trait_bounds(input.generics, &used_generics_names, &assoc_target_names);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let extend = quote! {
@@ -80,7 +88,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
     extend.into()
 }
 
-fn add_trait_bounds(mut generics: Generics, used_generics_names: &HashSet<String>) -> Generics {
+fn add_trait_bounds(
+    mut generics: Generics,
+    used_generics_names: &HashSet<String>,
+    assoc_target_names: &Vec<&Vec<String>>,
+) -> Generics {
     for param in &mut generics.params {
         if let GenericParam::Type(ref mut type_param) = *param {
             if used_generics_names.contains(&type_param.ident.to_string()) {
@@ -88,6 +100,14 @@ fn add_trait_bounds(mut generics: Generics, used_generics_names: &HashSet<String
             }
         }
     }
+
+    let punctuated = &mut generics.make_where_clause().predicates;
+    dbg!(&punctuated);
+    for an in assoc_target_names {
+        punctuated.push(parse_quote!(T: Debug))
+    }
+    dbg!(&punctuated);
+
     generics
 }
 
