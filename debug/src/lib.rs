@@ -17,8 +17,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         return syn::Error::new(Span::call_site(), "Unsupported".to_string()).into_compile_error().into();
     };
 
-    let target_custom_where_predicates = get_custom_where_predicates(&input.attrs);
-    let target_custom_where_predicates: Vec<_> = match target_custom_where_predicates {
+    let target_custom_where_predicates = match get_custom_where_predicates(&input.attrs) {
         Ok(x) => x,
         Err(e) => return e.into_compile_error().into(),
     };
@@ -35,9 +34,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let mut used_type_params = HashSet::<CompPath>::new();
-
-    let field_supplies: Vec<_> = data
+    let (field_supplies, valid_types): (Vec<_>, Vec<_>) = data
         .fields
         .iter()
         .map(
@@ -46,28 +43,35 @@ pub fn derive(input: TokenStream) -> TokenStream {
              }| {
                 let valid_types = get_valid_types(ty);
                 if valid_types.is_empty() {
-                    return quote!();
+                    return (quote!(), valid_types);
                 };
-
-                used_type_params.extend(valid_types.into_iter());
 
                 let debug_format = get_debug_format(attrs);
 
-                match debug_format {
-                    Some(debug_format) => quote! {
-                        .field(stringify!(#ident), &format_args!(#debug_format, &self.#ident))
+                (
+                    match debug_format {
+                        Some(debug_format) => quote! {
+                            .field(stringify!(#ident), &format_args!(#debug_format, &self.#ident))
+                        },
+                        None => quote! {
+                            .field(stringify!(#ident), &self.#ident)
+                        },
                     },
-                    None => quote! {
-                        .field(stringify!(#ident), &self.#ident)
-                    },
-                }
+                    valid_types,
+                )
             },
         )
-        .collect();
+        .unzip();
 
-    if !target_custom_where_predicates.is_empty() {
-        used_type_params.clear();
-    }
+    let used_type_params = if target_custom_where_predicates.is_empty() {
+        let mut set = HashSet::<CompPath>::new();
+        for valid_types in valid_types {
+            set.extend(valid_types.into_iter());
+        }
+        set
+    } else {
+        Default::default()
+    };
 
     let assoc_target_names: Vec<_> = used_type_params
         .iter()
