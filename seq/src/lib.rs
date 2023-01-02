@@ -1,8 +1,7 @@
 use proc_macro::TokenStream;
-use proc_macro2::{Group, Ident, Literal, Span, TokenStream as TokenStream2, TokenTree};
-use quote::{quote, quote_spanned};
+use proc_macro2::{Group, Ident, Literal, TokenStream as TokenStream2, TokenTree};
+use quote::{quote, TokenStreamExt};
 use syn::parse::{Parse, ParseStream};
-use syn::spanned::Spanned;
 use syn::token::Brace;
 use syn::{braced, parse_macro_input, LitInt, Token};
 
@@ -20,6 +19,8 @@ pub fn seq(input: TokenStream) -> TokenStream {
         Err(x) => return x.into_compile_error().into(),
     };
 
+    dbg!(&input.body);
+
     let generated_codes = (start..end).map(|i| replace(input.body.clone(), (input.var.clone(), i)));
 
     (quote! {
@@ -29,19 +30,24 @@ pub fn seq(input: TokenStream) -> TokenStream {
 }
 
 fn replace(ts: TokenStream2, var: (Ident, usize)) -> TokenStream2 {
-    ts.into_iter()
-        .map(|t| match t {
+    let mut iter = ts.into_iter().peekable();
+    let mut ts = TokenStream2::new();
+
+    while let Some(t) = iter.next() {
+        match t {
             TokenTree::Group(g) => {
                 let mut new_group = Group::new(g.delimiter(), replace(g.stream(), var.clone()));
                 new_group.set_span(g.span());
-                TokenTree::Group(new_group)
+                ts.append(TokenTree::Group(new_group));
             }
             TokenTree::Ident(ident) if ident.to_string() == var.0.to_string() => {
-                TokenTree::Literal(Literal::usize_unsuffixed(var.1))
+                ts.append(TokenTree::Literal(Literal::usize_unsuffixed(var.1)))
             }
-            x => x,
-        })
-        .collect()
+            x => ts.append(x),
+        }
+    }
+
+    ts
 }
 
 #[derive(Debug)]
