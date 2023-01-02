@@ -17,42 +17,9 @@ pub fn derive(input: TokenStream) -> TokenStream {
         return syn::Error::new(Span::call_site(), "Unsupported".to_string()).into_compile_error().into();
     };
 
-    let target_custom_where_predicates = input
-        .attrs
-        .iter()
-        .map(|a| -> syn::Result<Option<_>> {
-            match a.parse_meta()? {
-                Meta::List(l) => match l.path.get_ident() {
-                    Some(ident) if ident == "debug" => {
-                        let nm = l.nested.first().ok_or(syn::Error::new_spanned(&l, "?"))?;
-                        let meta = wrap_match!(nm => NestedMeta::Meta)
-                            .ok_or(syn::Error::new_spanned(nm, "??"))?;
-                        let nv = wrap_match!(meta => Meta::NameValue)
-                            .ok_or(syn::Error::new_spanned(meta, "???"))?;
-                        let ident = nv
-                            .path
-                            .get_ident()
-                            .ok_or(syn::Error::new_spanned(&nv.path, "????"))?;
-                        if ident.to_string() != "bound" {
-                            return Err(syn::Error::new_spanned(nv, "should be `bound = (...)`"));
-                        }
-                        if let Lit::Str(str) = &nv.lit {
-                            let str = str.token().to_string();
-                            let str = str.trim_matches(|c| !char::is_alphanumeric(c));
-                            let w = syn::parse_str::<WherePredicate>(&str)?;
-                            Ok(Some(w))
-                        } else {
-                            Err(syn::Error::new_spanned(&nv.lit, "invalid format"))
-                        }
-                    }
-                    _ => Ok(None),
-                },
-                _ => unimplemented!(),
-            }
-        })
-        .collect::<Result<Vec<_>, _>>();
+    let target_custom_where_predicates = get_custom_where_predicates(&input.attrs);
     let target_custom_where_predicates: Vec<_> = match target_custom_where_predicates {
-        Ok(x) => x.into_iter().filter_map(|x| x).collect(),
+        Ok(x) => x,
         Err(e) => return e.into_compile_error().into(),
     };
 
@@ -143,6 +110,42 @@ pub fn derive(input: TokenStream) -> TokenStream {
     };
 
     extend.into()
+}
+
+fn get_custom_where_predicates(attrs: &Vec<Attribute>) -> syn::Result<Vec<WherePredicate>> {
+    attrs
+        .iter()
+        .map(|a| -> syn::Result<_> {
+            match a.parse_meta()? {
+                Meta::List(l) => match l.path.get_ident() {
+                    Some(ident) if ident == "debug" => {
+                        let nm = l.nested.first().ok_or(syn::Error::new_spanned(&l, "?"))?;
+                        let meta = wrap_match!(nm => NestedMeta::Meta)
+                            .ok_or(syn::Error::new_spanned(nm, "??"))?;
+                        let nv = wrap_match!(meta => Meta::NameValue)
+                            .ok_or(syn::Error::new_spanned(meta, "???"))?;
+                        let ident = nv
+                            .path
+                            .get_ident()
+                            .ok_or(syn::Error::new_spanned(&nv.path, "????"))?;
+                        if ident.to_string() != "bound" {
+                            return Err(syn::Error::new_spanned(nv, "should be `bound = (...)`"));
+                        }
+                        if let Lit::Str(str) = &nv.lit {
+                            let str = str.token().to_string();
+                            let str = str.trim_matches(|c| !char::is_alphanumeric(c));
+                            let w = syn::parse_str::<WherePredicate>(&str)?;
+                            Ok(w)
+                        } else {
+                            Err(syn::Error::new_spanned(&nv.lit, "invalid format"))
+                        }
+                    }
+                    _ => unimplemented!(),
+                },
+                _ => unimplemented!(),
+            }
+        })
+        .collect::<Result<_, _>>()
 }
 
 struct CompPath<'a>(&'a Path);
