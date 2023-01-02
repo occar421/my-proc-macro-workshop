@@ -3,6 +3,7 @@ use proc_macro2::{Ident, Span};
 use quote::quote;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
+use syn::__private::TokenStream2;
 use syn::{
     parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Field, Fields, GenericArgument,
     GenericParam, Generics, Lit, Meta, NestedMeta, Path, PathArguments, Type, WherePredicate,
@@ -38,29 +39,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
         add_custom_bounds(input.generics, &target_custom_where_predicates)
     };
 
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let field_supplies = field_debug_data.iter().filter_map(|f| {
-        f.clone().map(|(ident, debug_format)| match debug_format {
-            Some(debug_format) => quote! {
-                .field(stringify!(#ident), &format_args!(#debug_format, &self.#ident))
-            },
-            None => quote! {
-                .field(stringify!(#ident), &self.#ident)
-            },
-        })
-    });
+    render(&target_ident, &generics, &field_debug_data).into()
+}
 
-    let extend = quote! {
-        impl #impl_generics std::fmt::Debug for #target_ident #ty_generics #where_clause {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-                f.debug_struct(stringify!(#target_ident))
-                    #(#field_supplies)*
-                    .finish()
-            }
-        }
-    };
-
-    extend.into()
+struct FieldDebugInfo {
+    ident: Ident,
+    debug_format: Option<String>,
 }
 
 fn get_custom_where_predicates(attrs: &Vec<Attribute>) -> syn::Result<Vec<WherePredicate>> {
@@ -99,7 +83,7 @@ fn get_custom_where_predicates(attrs: &Vec<Attribute>) -> syn::Result<Vec<WhereP
         .collect::<Result<_, _>>()
 }
 
-fn analyze_fields(fields: &Fields) -> Vec<(Option<(Ident, Option<String>)>, Vec<CompPath>)> {
+fn analyze_fields(fields: &Fields) -> Vec<(Option<FieldDebugInfo>, Vec<CompPath>)> {
     fields
         .iter()
         .map(
@@ -112,7 +96,13 @@ fn analyze_fields(fields: &Fields) -> Vec<(Option<(Ident, Option<String>)>, Vec<
                 } else {
                     let debug_format = get_debug_format(attrs);
 
-                    (Some((ident.clone().unwrap(), debug_format)), valid_types)
+                    (
+                        Some(FieldDebugInfo {
+                            ident: ident.clone().unwrap(),
+                            debug_format,
+                        }),
+                        valid_types,
+                    )
                 }
             },
         )
@@ -283,3 +273,38 @@ macro_rules! wrap_match {
 }
 
 use wrap_match;
+
+fn render(
+    target_ident: &Ident,
+    generics: &Generics,
+    field_debug_data: &Vec<Option<FieldDebugInfo>>,
+) -> TokenStream2 {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let field_supplies = field_debug_data.iter().filter_map(|f| {
+        f.as_ref().map(
+            |FieldDebugInfo {
+                 ident,
+                 debug_format,
+             }| {
+                match debug_format {
+                    Some(debug_format) => quote! {
+                        .field(stringify!(#ident), &format_args!(#debug_format, &self.#ident))
+                    },
+                    None => quote! {
+                        .field(stringify!(#ident), &self.#ident)
+                    },
+                }
+            },
+        )
+    });
+
+    quote! {
+        impl #impl_generics std::fmt::Debug for #target_ident #ty_generics #where_clause {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+                f.debug_struct(stringify!(#target_ident))
+                    #(#field_supplies)*
+                    .finish()
+            }
+        }
+    }
+}
