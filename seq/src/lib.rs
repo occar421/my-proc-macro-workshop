@@ -1,13 +1,17 @@
 use proc_macro::TokenStream;
-use proc_macro2::Delimiter::Parenthesis;
+use proc_macro2::Delimiter::{Bracket, Parenthesis};
 use proc_macro2::{Group, Ident, Literal, TokenStream as TokenStream2, TokenTree};
 use quote::{quote, TokenStreamExt};
 use syn::parse::{Parse, ParseStream};
-use syn::{braced, parse_macro_input, LitInt, Token};
+use syn::spanned::Spanned;
+use syn::token::{Brace, Paren, Pound, Star, Token};
+use syn::{braced, parenthesized, parse_macro_input, LitInt, Token};
 
 #[proc_macro]
 pub fn seq(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as SeqInput);
+
+    dbg!(&input);
 
     let start = match input.start.base10_parse::<usize>() {
         Ok(x) => x,
@@ -27,7 +31,9 @@ pub fn seq(input: TokenStream) -> TokenStream {
     //
     // dbg!(&pre, &seq_target, &post);
 
-    replace(input.body.clone(), (input.var.clone(), None), start, end).into()
+    // replace(input.body.clone(), (input.var.clone(), None), start, end).into()
+
+    TokenStream2::new().into()
 }
 
 // fn get_specific_part(ts: TokenStream2) -> Option<(TokenStream2, TokenStream2, TokenStream2)> {
@@ -156,22 +162,95 @@ struct SeqInput {
     range_token: Token![..],
     end: LitInt,
     #[allow(dead_code)]
-    brace_token: syn::token::Brace,
-    body: TokenStream2,
+    brace_token: Brace,
+    body: SeqBody,
+}
+
+#[derive(Debug)]
+enum SeqBody {
+    Plain(TokenStream2),
+    One(SeqBodyOne),
+}
+
+#[derive(Debug)]
+struct SeqBodyOne {
+    pre: TokenStream2,
+    pound_token: Token![#],
+    paren_token: syn::token::Paren,
+    specific_area: TokenStream2,
+    star_token: Token![*],
+    post: TokenStream2,
 }
 
 impl Parse for SeqInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let var = input.parse()?;
+        let in_token = input.parse()?;
+        let start = input.parse()?;
+        let range_token = input.parse()?;
+        let end = input.parse()?;
         let content;
-        Ok(SeqInput {
-            var: input.parse()?,
-            in_token: input.parse()?,
-            start: input.parse()?,
-            range_token: input.parse()?,
-            end: input.parse()?,
-            brace_token: braced!(content in input),
-            body: content.parse()?,
-        })
+        let brace_token = braced!(content in input);
+
+        let seek_sharp = content.step(|cursor| {
+            let mut rest = *cursor;
+            let mut pre = TokenStream2::new();
+            while let Some((tt, next)) = rest.token_tree() {
+                match &tt {
+                    TokenTree::Punct(punct0) if punct0.as_char() == '#' => {
+                        dbg!("a");
+                        dbg!(next.group(Parenthesis).is_some());
+                        dbg!(next.group(Bracket).is_some());
+                        if let Some((group_content, group_span, tail)) = next.group(Parenthesis) {
+                            dbg!("b");
+                            match tail.punct() {
+                                Some((punct1, tail)) if punct1.as_char() == '*' => {
+                                    return Ok((
+                                        SeqBodyOne {
+                                            pre,
+                                            pound_token: Pound(punct0.span()),
+                                            paren_token: Paren(group_span),
+                                            specific_area: group_content.token_stream(),
+                                            star_token: Star(punct1.span()),
+                                            post: tail.token_stream(),
+                                        },
+                                        tail,
+                                    ));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+
+                pre.append(tt);
+                rest = next;
+                // dbg!(&pre);
+            }
+            Err(cursor.error("no `#(` was found after this point"))
+        });
+        if let Some(seq_body_one) = seek_sharp.ok() {
+            Ok(Self {
+                var,
+                in_token,
+                start,
+                range_token,
+                end,
+                brace_token,
+                body: SeqBody::One(seq_body_one),
+            })
+        } else {
+            Ok(Self {
+                var,
+                in_token,
+                start,
+                range_token,
+                end,
+                brace_token,
+                body: SeqBody::Plain(content.parse()?),
+            })
+        }
     }
 }
 
