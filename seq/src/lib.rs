@@ -19,26 +19,42 @@ pub fn seq(input: TokenStream) -> TokenStream {
         Err(x) => return x.into_compile_error().into(),
     };
 
-    let seq_target = get_specific_part(input.body.clone()).unwrap_or(input.body);
+    let (pre, seq_target, post) = get_specific_part(input.body.clone()).unwrap_or((
+        TokenStream2::new(),
+        input.body,
+        TokenStream2::new(),
+    ));
+
+    dbg!(&pre, &seq_target, &post);
 
     let generated_codes = (start..end).map(|i| replace(seq_target.clone(), (input.var.clone(), i)));
 
     (quote! {
+        #pre
         #(#generated_codes)*
+        #post
     })
     .into()
 }
 
-fn get_specific_part(ts: TokenStream2) -> Option<TokenStream2> {
+fn get_specific_part(ts: TokenStream2) -> Option<(TokenStream2, TokenStream2, TokenStream2)> {
     let ts: Vec<_> = ts.into_iter().collect();
-    for slice in ts.windows(3) {
+    for (i, slice) in ts.clone().windows(3).enumerate() {
         match (&slice[0], &slice[1], &slice[2]) {
             (TokenTree::Punct(sharp), TokenTree::Group(paren_group), TokenTree::Punct(star))
                 if sharp.as_char() == '#'
                     && paren_group.delimiter() == Parenthesis
                     && star.as_char() == '*' =>
             {
-                return Some(paren_group.stream())
+                // maybe low perf here
+
+                // before sharp
+                let pre = TokenStream2::from_iter(ts.clone().into_iter().take(i));
+
+                // after sharp
+                let post = TokenStream2::from_iter(ts.into_iter().skip(i + 3));
+
+                return Some((pre, paren_group.stream(), post));
             }
             _ => {}
         }
