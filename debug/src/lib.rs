@@ -37,21 +37,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
             |Field {
                  ident, attrs, ty, ..
              }| {
-                let Some(valid_names) = get_valid_type(ty) else {
+                let Some(valid_names) = get_valid_types(ty) else {
                     return quote!();
                 };
 
-                let mut depending_types: HashSet<_> = valid_names
-                    .children
-                    .iter()
-                    .map(|c| c.node_name.clone())
-                    .collect();
-                depending_types.insert(valid_names.node_name);
-                used_type_params = depending_types
-                    .union(&used_type_params)
-                    .into_iter()
-                    .cloned()
-                    .collect();
+                used_type_params.extend(valid_names.into_iter());
 
                 let debug_format = get_debug_format(attrs);
 
@@ -100,12 +90,7 @@ fn add_trait_bounds(mut generics: Generics, used_generics_names: &HashSet<String
     generics
 }
 
-struct Tree {
-    node_name: String,
-    children: Vec<Tree>,
-}
-
-fn get_valid_type(ty: &Type) -> Option<Tree> {
+fn get_valid_types(ty: &Type) -> Option<Vec<String>> {
     let tp = match ty {
         Type::Path(tp) => tp,
         Type::Reference(tr) => wrap_match!(tr.elem.as_ref() => Type::Path)?,
@@ -116,21 +101,19 @@ fn get_valid_type(ty: &Type) -> Option<Tree> {
     match node_name.as_str() {
         "PhantomData" => None,
         _ => match &ps.arguments {
-            PathArguments::AngleBracketed(ab) => Tree {
-                node_name,
-                children: ab
-                    .args
-                    .iter()
-                    .filter_map(|a| get_valid_type(wrap_match!(a => GenericArgument::Type)?))
-                    .collect(),
+            PathArguments::AngleBracketed(ab) => {
+                let mut v = vec![node_name];
+                v.extend(
+                    ab.args
+                        .iter()
+                        .filter_map(|a| get_valid_types(wrap_match!(a => GenericArgument::Type)?))
+                        .flatten(),
+                );
+                v
             }
             .into(),
             PathArguments::Parenthesized(_) => unimplemented!(),
-            PathArguments::None => Tree {
-                node_name,
-                children: vec![],
-            }
-            .into(),
+            PathArguments::None => vec![node_name].into(),
         },
     }
 }
