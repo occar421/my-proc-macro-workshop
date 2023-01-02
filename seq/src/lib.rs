@@ -22,7 +22,11 @@ pub fn seq(input: TokenStream) -> TokenStream {
         Err(x) => return x.into_compile_error().into(),
     };
 
-    let range = start..end;
+    let range = if input.range_inclusive_eq_token.is_some() {
+        start..(end + 1)
+    } else {
+        start..end
+    };
 
     match replace(input.body.clone(), (input.var.clone(), None), range.clone()) {
         Ok(ts) => ts.into(),
@@ -152,6 +156,8 @@ struct SeqInput {
     start: LitInt,
     #[allow(dead_code)]
     range_token: Token![..],
+    #[allow(dead_code)]
+    range_inclusive_eq_token: Option<Token![=]>,
     end: LitInt,
     #[allow(dead_code)]
     brace_token: syn::token::Brace,
@@ -166,6 +172,7 @@ impl Parse for SeqInput {
             in_token: input.parse()?,
             start: input.parse()?,
             range_token: input.parse()?,
+            range_inclusive_eq_token: input.parse()?,
             end: input.parse()?,
             brace_token: braced!(content in input),
             body: content.parse()?,
