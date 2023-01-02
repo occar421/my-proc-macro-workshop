@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
+use proc_macro2::Delimiter::Parenthesis;
 use proc_macro2::{Group, Ident, Literal, TokenStream as TokenStream2, TokenTree};
 use quote::{quote, TokenStreamExt};
 use syn::parse::{Parse, ParseStream};
-use syn::token::Brace;
 use syn::{braced, parse_macro_input, LitInt, Token};
 
 #[proc_macro]
@@ -19,7 +19,9 @@ pub fn seq(input: TokenStream) -> TokenStream {
         Err(x) => return x.into_compile_error().into(),
     };
 
-    let generated_codes = (start..end).map(|i| replace(input.body.clone(), (input.var.clone(), i)));
+    let seq_target = get_specific_part(input.body.clone()).unwrap_or(input.body);
+
+    let generated_codes = (start..end).map(|i| replace(seq_target.clone(), (input.var.clone(), i)));
 
     (quote! {
         #(#generated_codes)*
@@ -27,12 +29,33 @@ pub fn seq(input: TokenStream) -> TokenStream {
     .into()
 }
 
+fn get_specific_part(ts: TokenStream2) -> Option<TokenStream2> {
+    let ts: Vec<_> = ts.into_iter().collect();
+    for slice in ts.windows(3) {
+        match (&slice[0], &slice[1], &slice[2]) {
+            (TokenTree::Punct(sharp), TokenTree::Group(paren_group), TokenTree::Punct(star))
+                if sharp.as_char() == '#'
+                    && paren_group.delimiter() == Parenthesis
+                    && star.as_char() == '*' =>
+            {
+                return Some(paren_group.stream())
+            }
+            _ => {}
+        }
+    }
+
+    ts.iter().find_map(|x| match x {
+        TokenTree::Group(g) => get_specific_part(g.stream()),
+        _ => None,
+    })
+}
+
 fn replace(ts: TokenStream2, var: (Ident, usize)) -> TokenStream2 {
     let mut iter = ts.into_iter().peekable();
     let mut ts = TokenStream2::new();
 
-    while let Some(t) = iter.next() {
-        match &t {
+    while let Some(t0) = iter.next() {
+        match &t0 {
             TokenTree::Group(g) => {
                 let mut new_group = Group::new(g.delimiter(), replace(g.stream(), var.clone()));
                 new_group.set_span(g.span());
@@ -42,7 +65,7 @@ fn replace(ts: TokenStream2, var: (Ident, usize)) -> TokenStream2 {
                 ts.append(TokenTree::Literal(Literal::usize_unsuffixed(var.1)))
             }
             TokenTree::Ident(ident) => {
-                if let Some(tilde) = iter.next_if(|x| match x {
+                if let Some(tilde) = iter.next_if(|t1| match t1 {
                     TokenTree::Punct(punct) if punct.as_char() == '~' => true,
                     _ => false,
                 }) {
@@ -60,10 +83,10 @@ fn replace(ts: TokenStream2, var: (Ident, usize)) -> TokenStream2 {
                         }
                     }
                 } else {
-                    ts.append(t);
+                    ts.append(t0);
                 }
             }
-            _ => ts.append(t),
+            _ => ts.append(t0),
         }
     }
 
@@ -80,7 +103,7 @@ struct SeqInput {
     range_token: Token![..],
     end: LitInt,
     #[allow(dead_code)]
-    brace_token: Brace,
+    brace_token: syn::token::Brace,
     body: TokenStream2,
 }
 
@@ -98,3 +121,5 @@ impl Parse for SeqInput {
         })
     }
 }
+
+// #()* があるときだけ繰り返しスコープを狭める。無いときは全体がスコープ。
