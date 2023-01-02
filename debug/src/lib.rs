@@ -1,12 +1,11 @@
-use proc_macro::{Ident, TokenStream};
+use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
 use std::collections::HashSet;
-use syn::punctuated::Punctuated;
-use syn::token::Colon2;
+use std::hash::{Hash, Hasher};
 use syn::{
     parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Field, GenericArgument,
-    GenericParam, Generics, Lit, Meta, PathArguments, PathSegment, Type, WhereClause,
+    GenericParam, Generics, Lit, Meta, Path, PathArguments, Type,
 };
 
 #[proc_macro_derive(CustomDebug, attributes(debug))]
@@ -30,7 +29,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let mut used_type_params = HashSet::<Vec<String>>::new();
+    let mut used_type_params = HashSet::<CompPath>::new();
 
     let field_supplies: Vec<_> = data
         .fields
@@ -62,14 +61,24 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let assoc_target_names: Vec<_> = used_type_params
         .iter()
-        .filter(|p| match p.first() {
-            Some(x) if target_generics_params.contains(x) => true,
+        .filter(|CompPath(path)| match path.segments.first() {
+            Some(s) if target_generics_params.contains(&s.ident.to_string()) => true,
             _ => false,
         })
         .collect();
     let used_generics_names: HashSet<_> = target_generics_params
         .into_iter()
-        .filter(|name| used_type_params.contains(&vec![name.clone()]))
+        .filter(|name| {
+            for CompPath(path) in &used_type_params {
+                if path.segments.len() == 1 {
+                    if &path.segments.first().unwrap().ident.to_string() == name {
+                        return true;
+                    }
+                }
+            }
+
+            false
+        })
         .collect();
 
     let generics = add_trait_bounds(input.generics, &used_generics_names, &assoc_target_names);
@@ -88,10 +97,37 @@ pub fn derive(input: TokenStream) -> TokenStream {
     extend.into()
 }
 
+struct CompPath<'a>(&'a Path);
+
+impl<'a> PartialEq<Self> for CompPath<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        let s: Vec<_> = self.0.segments.iter().rev().collect();
+        let o: Vec<_> = other.0.segments.iter().rev().collect();
+
+        for (s, o) in s.iter().zip(o) {
+            if s.ident.to_string() != o.ident.to_string() {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+impl<'a> Eq for CompPath<'a> {}
+
+impl<'a> Hash for CompPath<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for seg in &self.0.segments {
+            seg.ident.to_string().hash(state);
+        }
+    }
+}
+
 fn add_trait_bounds(
     mut generics: Generics,
     used_generics_names: &HashSet<String>,
-    assoc_target_names: &Vec<&Vec<String>>,
+    assoc_target_names: &Vec<&CompPath>,
 ) -> Generics {
     for param in &mut generics.params {
         if let GenericParam::Type(ref mut type_param) = *param {
@@ -102,31 +138,29 @@ fn add_trait_bounds(
     }
 
     let punctuated = &mut generics.make_where_clause().predicates;
-    dbg!(&punctuated);
-    for an in assoc_target_names {
-        punctuated.push(parse_quote!(T: Debug))
+    for CompPath(path) in assoc_target_names {
+        punctuated.push(parse_quote!(#path: std::fmt::Debug));
     }
-    dbg!(&punctuated);
 
     generics
 }
 
-fn get_valid_types(ty: &Type) -> Vec<Vec<String>> {
+fn get_valid_types(ty: &Type) -> Vec<CompPath> {
     return get_valid_types_inner(ty).unwrap_or(vec![]);
 
-    fn get_valid_types_inner(ty: &Type) -> Option<Vec<Vec<String>>> {
+    fn get_valid_types_inner(ty: &Type) -> Option<Vec<CompPath>> {
         let tp = match ty {
             Type::Path(tp) => tp,
             Type::Reference(tr) => wrap_match!(tr.elem.as_ref() => Type::Path)?,
             _ => return None,
         };
-        let ident_segment_names = get_ident_segment_names(&tp.path.segments);
-        let ps = tp.path.segments.last()?; // naive
+        let path = &tp.path;
+        let ps = path.segments.last()?; // naive
         match ps.ident.to_string().as_str() {
             "PhantomData" => None,
             _ => match &ps.arguments {
                 PathArguments::AngleBracketed(ab) => {
-                    let mut v = vec![ident_segment_names];
+                    let mut v = vec![CompPath(path)];
                     v.extend(
                         ab.args
                             .iter()
@@ -139,13 +173,9 @@ fn get_valid_types(ty: &Type) -> Vec<Vec<String>> {
                 }
                 .into(),
                 PathArguments::Parenthesized(_) => unimplemented!(),
-                PathArguments::None => vec![ident_segment_names].into(),
+                PathArguments::None => vec![CompPath(path)].into(),
             },
         }
-    }
-
-    fn get_ident_segment_names(segments: &Punctuated<PathSegment, Colon2>) -> Vec<String> {
-        segments.iter().map(|s| s.ident.to_string()).collect()
     }
 }
 
