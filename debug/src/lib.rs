@@ -1,10 +1,10 @@
 use proc_macro::TokenStream;
-use proc_macro2::Span;
+use proc_macro2::{Ident, Span};
 use quote::quote;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use syn::{
-    parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Field, GenericArgument,
+    parse_macro_input, parse_quote, Attribute, Data, DeriveInput, Field, Fields, GenericArgument,
     GenericParam, Generics, Lit, Meta, NestedMeta, Path, PathArguments, Type, WherePredicate,
 };
 
@@ -17,91 +17,38 @@ pub fn derive(input: TokenStream) -> TokenStream {
         return syn::Error::new(Span::call_site(), "Unsupported".to_string()).into_compile_error().into();
     };
 
+    let (field_debug_data, valid_types): (Vec<_>, Vec<_>) =
+        analyze_fields(&data.fields).into_iter().unzip();
+
     let target_custom_where_predicates = match get_custom_where_predicates(&input.attrs) {
         Ok(x) => x,
         Err(e) => return e.into_compile_error().into(),
     };
 
-    let target_generics_params: HashSet<_> = input
-        .generics
-        .params
-        .iter()
-        .filter_map(|p| {
-            wrap_match!(p => GenericParam::Type)?
-                .ident
-                .to_string()
-                .into()
-        })
-        .collect();
+    let generics = if target_custom_where_predicates.is_empty() {
+        let target_generics_idents = get_generic_param_idents(&input.generics);
 
-    let (field_supplies, valid_types): (Vec<_>, Vec<_>) = data
-        .fields
-        .iter()
-        .map(
-            |Field {
-                 ident, attrs, ty, ..
-             }| {
-                let valid_types = get_valid_types(ty);
-                if valid_types.is_empty() {
-                    return (quote!(), valid_types);
-                };
-
-                let debug_format = get_debug_format(attrs);
-
-                (
-                    match debug_format {
-                        Some(debug_format) => quote! {
-                            .field(stringify!(#ident), &format_args!(#debug_format, &self.#ident))
-                        },
-                        None => quote! {
-                            .field(stringify!(#ident), &self.#ident)
-                        },
-                    },
-                    valid_types,
-                )
-            },
-        )
-        .unzip();
-
-    let used_type_params = if target_custom_where_predicates.is_empty() {
-        let mut set = HashSet::<CompPath>::new();
+        let mut used_type_params = HashSet::<CompPath>::new();
         for valid_types in valid_types {
-            set.extend(valid_types.into_iter());
+            used_type_params.extend(valid_types.into_iter());
         }
-        set
+
+        add_trait_bounds(input.generics, &target_generics_idents, &used_type_params)
     } else {
-        Default::default()
+        add_custom_bounds(input.generics, &target_custom_where_predicates)
     };
 
-    let assoc_target_names: Vec<_> = used_type_params
-        .iter()
-        .filter(|CompPath(path)| match path.segments.first() {
-            Some(s) if target_generics_params.contains(&s.ident.to_string()) => true,
-            _ => false,
-        })
-        .collect();
-    let used_generics_names: HashSet<_> = target_generics_params
-        .into_iter()
-        .filter(|name| {
-            for CompPath(path) in &used_type_params {
-                if path.segments.len() == 1 {
-                    if &path.segments.first().unwrap().ident.to_string() == name {
-                        return true;
-                    }
-                }
-            }
-
-            false
-        })
-        .collect();
-
-    let generics = add_trait_bounds(
-        input.generics,
-        &used_generics_names,
-        &assoc_target_names,
-        &target_custom_where_predicates,
-    );
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let field_supplies = field_debug_data.iter().filter_map(|f| {
+        f.clone().map(|(ident, debug_format)| match debug_format {
+            Some(debug_format) => quote! {
+                .field(stringify!(#ident), &format_args!(#debug_format, &self.#ident))
+            },
+            None => quote! {
+                .field(stringify!(#ident), &self.#ident)
+            },
+        })
+    });
 
     let extend = quote! {
         impl #impl_generics std::fmt::Debug for #target_ident #ty_generics #where_clause {
@@ -152,6 +99,35 @@ fn get_custom_where_predicates(attrs: &Vec<Attribute>) -> syn::Result<Vec<WhereP
         .collect::<Result<_, _>>()
 }
 
+fn analyze_fields(fields: &Fields) -> Vec<(Option<(Ident, Option<String>)>, Vec<CompPath>)> {
+    fields
+        .iter()
+        .map(
+            |Field {
+                 ident, attrs, ty, ..
+             }| {
+                let valid_types = get_valid_types(ty);
+                if valid_types.is_empty() {
+                    (None, valid_types)
+                } else {
+                    let debug_format = get_debug_format(attrs);
+
+                    (Some((ident.clone().unwrap(), debug_format)), valid_types)
+                }
+            },
+        )
+        .collect()
+}
+
+fn get_generic_param_idents(generics: &Generics) -> HashSet<CompIdent> {
+    generics
+        .params
+        .iter()
+        .filter_map(|p| wrap_match!(p => GenericParam::Type))
+        .map(|p| CompIdent(p.ident.clone()))
+        .collect()
+}
+
 struct CompPath<'a>(&'a Path);
 
 impl<'a> PartialEq<Self> for CompPath<'a> {
@@ -179,24 +155,72 @@ impl<'a> Hash for CompPath<'a> {
     }
 }
 
+struct CompIdent(Ident);
+
+impl PartialEq<Self> for CompIdent {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_string().eq(&other.0.to_string())
+    }
+}
+
+impl Eq for CompIdent {}
+
+impl Hash for CompIdent {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.to_string().hash(state);
+    }
+}
+
 fn add_trait_bounds(
     mut generics: Generics,
-    used_generics_names: &HashSet<String>,
-    assoc_target_names: &Vec<&CompPath>,
-    target_custom_where_predicates: &Vec<WherePredicate>,
+    target_generics_idents: &HashSet<CompIdent>,
+    used_type_params: &HashSet<CompPath>,
 ) -> Generics {
+    let used_generics_names: HashSet<_> = target_generics_idents
+        .into_iter()
+        .filter(|CompIdent(ident)| {
+            for CompPath(path) in used_type_params {
+                if path.segments.len() == 1 {
+                    if path.segments.first().unwrap().ident.to_string() == ident.to_string() {
+                        return true;
+                    }
+                }
+            }
+
+            false
+        })
+        .collect();
+
     for param in &mut generics.params {
         if let GenericParam::Type(ref mut type_param) = *param {
-            if used_generics_names.contains(&type_param.ident.to_string()) {
+            if used_generics_names.contains(&CompIdent(type_param.ident.clone())) {
                 type_param.bounds.push(parse_quote!(std::fmt::Debug));
             }
         }
     }
 
+    let assoc_target_names: Vec<_> = used_type_params
+        .iter()
+        .filter(|CompPath(path)| match path.segments.first() {
+            Some(s) if target_generics_idents.contains(&CompIdent(s.ident.clone())) => true,
+            _ => false,
+        })
+        .collect();
+
     let punctuated = &mut generics.make_where_clause().predicates;
     for CompPath(path) in assoc_target_names {
         punctuated.push(parse_quote!(#path: std::fmt::Debug));
     }
+
+    generics
+}
+
+fn add_custom_bounds(
+    mut generics: Generics,
+    target_custom_where_predicates: &Vec<WherePredicate>,
+) -> Generics {
+    let punctuated = &mut generics.make_where_clause().predicates;
+
     for predicate in target_custom_where_predicates {
         punctuated.push(predicate.clone());
     }
