@@ -1,24 +1,30 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
-use syn::{parse_macro_input, Item, ItemEnum};
+use syn::{parse_macro_input, Item};
 
 #[proc_macro_attribute]
 pub fn sorted(args: TokenStream, input: TokenStream) -> TokenStream {
     let _ = args;
     let item = parse_macro_input!(input as syn::Item);
 
-    let item = match validate(&item) {
+    match validate(&item) {
         Ok(x) => x,
         Err(e) => {
-            return e.into_compile_error().into();
+            let compile_error = e.into_compile_error();
+            return (quote! {
+                #item
+
+                #compile_error
+            })
+            .into();
         }
     };
 
     (quote! { #item }).into()
 }
 
-fn validate(item: &Item) -> syn::Result<&ItemEnum> {
+fn validate(item: &Item) -> syn::Result<()> {
     let item = match item {
         Item::Enum(e) => e,
         _ => {
@@ -35,11 +41,11 @@ fn validate(item: &Item) -> syn::Result<&ItemEnum> {
     for (actual, &right) in item.variants.iter().zip(&variants) {
         if actual.ident != right.ident {
             return Err(syn::Error::new_spanned(
-                right,
+                &right.ident,
                 format!("{} should sort before {}", right.ident, actual.ident),
             ));
         }
     }
 
-    Ok(item)
+    Ok(())
 }
