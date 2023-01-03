@@ -1,8 +1,9 @@
 use proc_macro::TokenStream;
-use proc_macro2::Span;
+use proc_macro2::{Ident, Span};
 use quote::quote;
+use syn::token::Colon2;
 use syn::visit_mut::VisitMut;
-use syn::{parse_macro_input, ExprMatch, Item, Pat};
+use syn::{parse_macro_input, ExprMatch, Item, Pat, Path};
 
 #[proc_macro_attribute]
 pub fn sorted(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -108,25 +109,47 @@ impl VisitMut for ExprVisitor {
             node.attrs.remove(sorted_attr_pos);
 
             let path_iter = node.arms.iter().map(|a| match &a.pat {
+                Pat::Path(pp) => &pp.path,
                 Pat::TupleStruct(ts) => &ts.path,
+                Pat::Struct(ps) => &ps.path,
                 _ => unimplemented!(),
             });
             let mut sorted_paths: Vec<_> = path_iter.clone().collect();
-            sorted_paths.sort_unstable_by_key(|x| x.get_ident().unwrap());
+            sorted_paths.sort_unstable_by_key(|p| get_ident(p));
 
             for (actual_path, &right_path) in path_iter.zip(&sorted_paths) {
-                let actual_ident = actual_path.get_ident().unwrap();
-                let right_ident = right_path.get_ident().unwrap();
+                let actual_ident = get_ident(actual_path);
+                let right_ident = get_ident(right_path);
                 if actual_ident != right_ident {
                     self.errors.push(syn::Error::new_spanned(
                         &right_path,
-                        format!("{} should sort before {}", right_ident, actual_ident),
+                        format!(
+                            "{} should sort before {}",
+                            display_path(right_path),
+                            display_path(actual_path)
+                        ),
                     ));
                     break;
                 }
             }
         }
 
-        syn::visit_mut::visit_expr_match_mut(self, node);
+        syn::visit_mut::visit_expr_match_mut(self, node)
     }
+}
+
+fn get_ident(path: &Path) -> &Ident {
+    &path.segments.last().unwrap().ident
+}
+
+fn display_path(path: &Path) -> String {
+    fn display_colon2(colon2: Option<&Colon2>) -> String {
+        colon2.map_or(String::new(), |_| "::".to_string())
+    }
+
+    path.segments
+        .pairs()
+        .fold(display_colon2(path.leading_colon.as_ref()), |acc, pair| {
+            acc + &pair.value().ident.to_string() + &display_colon2(pair.punct().cloned())
+        })
 }
