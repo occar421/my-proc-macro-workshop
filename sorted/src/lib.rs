@@ -29,5 +29,17 @@ fn validate(item: &Item) -> syn::Result<&ItemEnum> {
         }
     };
 
+    let mut variants: Vec<_> = item.variants.iter().collect();
+    variants.sort_unstable_by_key(|x| &x.ident);
+
+    for (actual, &right) in item.variants.iter().zip(&variants) {
+        if actual.ident != right.ident {
+            return Err(syn::Error::new_spanned(
+                right,
+                format!("{} should sort before {}", right.ident, actual.ident),
+            ));
+        }
+    }
+
     Ok(item)
 }
