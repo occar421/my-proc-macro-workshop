@@ -108,12 +108,25 @@ impl VisitMut for ExprVisitor {
         if let Some(sorted_attr_pos) = sorted_attr_pos {
             node.attrs.remove(sorted_attr_pos);
 
-            let path_iter = node.arms.iter().map(|a| match &a.pat {
-                Pat::Path(pp) => &pp.path,
-                Pat::TupleStruct(ts) => &ts.path,
-                Pat::Struct(ps) => &ps.path,
-                _ => unimplemented!(),
-            });
+            let paths: Result<Vec<_>, _> = node
+                .arms
+                .iter()
+                .map(|a| match &a.pat {
+                    Pat::Path(pp) => Ok(Some(&pp.path)),
+                    Pat::TupleStruct(ts) => Ok(Some(&ts.path)),
+                    Pat::Struct(ps) => Ok(Some(&ps.path)),
+                    Pat::Slice(ps) => Err(syn::Error::new_spanned(ps, "unsupported by #[sorted]")),
+                    Pat::Ident(_) => Ok(None),
+                    _ => unimplemented!(),
+                })
+                .collect();
+            let path_iter = match paths {
+                Ok(paths) => paths.into_iter().filter_map(|x| x),
+                Err(e) => {
+                    self.errors.push(e);
+                    return;
+                }
+            };
             let mut sorted_paths: Vec<_> = path_iter.clone().collect();
             sorted_paths.sort_unstable_by_key(|p| get_ident(p));
 
@@ -129,7 +142,7 @@ impl VisitMut for ExprVisitor {
                             display_path(actual_path)
                         ),
                     ));
-                    break;
+                    return;
                 }
             }
         }
