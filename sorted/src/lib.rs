@@ -116,7 +116,7 @@ impl VisitMut for ExprVisitor {
                     Pat::TupleStruct(ts) => Ok(Some(&ts.path)),
                     Pat::Struct(ps) => Ok(Some(&ps.path)),
                     Pat::Slice(ps) => Err(syn::Error::new_spanned(ps, "unsupported by #[sorted]")),
-                    Pat::Ident(_) => Ok(None),
+                    Pat::Ident(_) | Pat::Wild(_) => Ok(None),
                     _ => unimplemented!(),
                 })
                 .collect();
