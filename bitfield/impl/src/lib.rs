@@ -16,6 +16,7 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let name = item.ident;
+
     let field_lengths: Vec<_> = item
         .fields
         .iter()
@@ -31,9 +32,6 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
                 .flatten()
         })
         .collect();
-
-    let n_bits: usize = field_lengths.iter().sum();
-    let n_bytes = (n_bits + 8 - 1) / 8; // div_cel
 
     let field_names = item.fields.iter().filter_map(|f| f.ident.as_ref());
     let field_range = field_lengths.iter().scan(0, |offset, length| {
@@ -79,6 +77,14 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
         _ => unimplemented!(),
     });
 
+    let n_bits = quote! {
+        (#(#type_paths::BITS)+*)
+    };
+
+    let n_bytes = quote! {
+        ((#n_bits) + 8 - 1) / 8
+    }; // div_ceil
+
     let result = quote! {
        #[repr(C)]
         pub struct #name {
@@ -86,7 +92,7 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         impl #name where
-            <bitfield::checks::CG<{(#(#type_paths::BITS)+*) % 8}> as bitfield::checks::DeductMod>::Enum
+            <bitfield::checks::CG<{#n_bits % 8}> as bitfield::checks::Deduct>::Mod
                 : bitfield::checks::TotalSizeIsMultipleOfEightBits {
             pub fn new() -> Self {
                 Self {

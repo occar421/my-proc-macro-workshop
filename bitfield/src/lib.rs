@@ -48,39 +48,39 @@ pub mod checks {
 
     pub struct CG<const N: usize>;
 
-    pub trait DeductMod {
-        type Enum;
+    pub trait Deduct {
+        type Mod;
     }
 
-    impl DeductMod for CG<0> {
-        type Enum = ZeroMod8;
+    impl Deduct for CG<0> {
+        type Mod = ZeroMod8;
     }
 
-    impl DeductMod for CG<1> {
-        type Enum = OneMod8;
+    impl Deduct for CG<1> {
+        type Mod = OneMod8;
     }
 
-    impl DeductMod for CG<2> {
-        type Enum = TwoMod8;
+    impl Deduct for CG<2> {
+        type Mod = TwoMod8;
     }
 
-    impl DeductMod for CG<3> {
-        type Enum = ThreeMod8;
+    impl Deduct for CG<3> {
+        type Mod = ThreeMod8;
     }
 
-    impl DeductMod for CG<4> {
-        type Enum = FourMod8;
+    impl Deduct for CG<4> {
+        type Mod = FourMod8;
     }
 
-    impl DeductMod for CG<5> {
-        type Enum = FiveMod8;
+    impl Deduct for CG<5> {
+        type Mod = FiveMod8;
     }
 
-    impl DeductMod for CG<6> {
-        type Enum = SixMod8;
+    impl Deduct for CG<6> {
+        type Mod = SixMod8;
     }
 
-    impl DeductMod for CG<7> {
-        type Enum = SevenMod8;
+    impl Deduct for CG<7> {
+        type Mod = SevenMod8;
     }
 }
