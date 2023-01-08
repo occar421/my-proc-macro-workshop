@@ -38,24 +38,32 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
                     #prev
                 };
 
+                let value_type = quote! {
+                    <bitfield::CG<{#length}> as bitfield::DeductSize>::Type
+                };
+
+                let type_bytes = quote! {
+                    (<bitfield::CG<{#length}> as bitfield::DeductSize>::BYTES)
+                };
+
                 let accessor = quote! {
-                    pub fn #getter_name(&self) -> u64 {
-                        let mut array_be = [0; 8];
+                    pub fn #getter_name(&self) -> #value_type {
+                        let mut array_be = [0; #type_bytes];
                         for i in 0..#length {
                             let data_i = i + #offset;
-                            let array_i = i + 64 - #length;
+                            let array_i = i + (#type_bytes * 8) - #length;
                             if (self.data[data_i / 8] & (0x1 << ((8 - (data_i % 8)) % 8)) > 0) {
                                 array_be[array_i / 8] |= 0x1 << ((8 - (array_i % 8)) % 8);
                             }
                         }
-                        u64::from_be_bytes(array_be)
+                        <#value_type>::from_be_bytes(array_be)
                     }
 
-                    pub fn #setter_name(&mut self, value: u64) {
-                        let array_be = u64::to_be_bytes(value);
+                    pub fn #setter_name(&mut self, value: #value_type) {
+                        let array_be = <#value_type>::to_be_bytes(value);
                         for i in 0..#length {
                             let data_i = i + #offset;
-                            let array_i = i + 64 - (#offset + #length);
+                            let array_i = i + (#type_bytes * 8) - (#offset + #length);
                             self.data[data_i / 8] &= !(0x1 << (data_i % 8)); // reset
                             self.data[data_i / 8] |= array_be[array_i / 8] & (0x1 << (array_i % 8));
                         }
