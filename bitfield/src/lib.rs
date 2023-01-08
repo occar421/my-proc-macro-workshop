@@ -47,51 +47,85 @@ pub mod checks {
 
     pub trait SevenMod8 {}
 
-    macro_rules! iter_b {
-        ($($($num:literal),* => $word:ident),*) => {
-            $(
-                iter_b!($($num)* => $word);
-            )*
-        };
-        ($($num:literal)* => $word:ident) => {
-            paste! {
-                $(
-                    impl [< $word Mod8 >] for [< B $num >] {}
-                )*
-            }
-        }
-    }
+    // macro_rules! iter_b {
+    //     ($($($num:literal),* => $word:ident),*) => {
+    //         $(
+    //             iter_b!($($num)* => $word);
+    //         )*
+    //     };
+    //     ($($num:literal)* => $word:ident) => {
+    //         paste! {
+    //             $(
+    //                 impl [< $word Mod8 >] for [< B $num >] {}
+    //             )*
+    //         }
+    //     }
+    // }
+    //
+    // iter_b![
+    //     1, 9,17,25,33,41,49,57 => One,
+    //     2,10,18,26,34,42,50,58 => Two,
+    //     3,11,19,27,35,43,51,59 => Three,
+    //     4,12,20,28,36,44,52,60 => Four,
+    //     5,13,21,29,37,45,53,61 => Five,
+    //     6,14,22,30,38,46,54,62 => Six,
+    //     7,15,23,31,39,47,55,63 => Seven,
+    //     8,16,24,32,40,48,56,64 => Zero
+    // ];
+    //
+    // macro_rules! iter_mul_8 {
+    //     ($($num:literal),*) => {
+    //         paste! {
+    //             $(
+    //                 impl TotalSizeIsMultipleOfEightBits for [< B $num >] {}
+    //             )*
+    //         }
+    //     }
+    // }
+    //
+    // iter_mul_8![8, 16, 24, 32, 40, 48, 56, 64];
 
-    iter_b![
-        1, 9,17,25,33,41,49,57 => One,
-        2,10,18,26,34,42,50,58 => Two,
-        3,11,19,27,35,43,51,59 => Three,
-        4,12,20,28,36,44,52,60 => Four,
-        5,13,21,29,37,45,53,61 => Five,
-        6,14,22,30,38,46,54,62 => Six,
-        7,15,23,31,39,47,55,63 => Seven,
-        8,16,24,32,40,48,56,64 => Zero
-    ];
+    pub struct CG<const N: usize>;
 
-    macro_rules! iter_mul_8 {
-        ($($num:literal),*) => {
-            paste! {
-                $(
-                    impl TotalSizeIsMultipleOfEightBits for [< B $num >] {}
-                )*
-            }
-        }
-    }
+    impl TotalSizeIsMultipleOfEightBits for CG<0> {}
 
-    iter_mul_8![8, 16, 24, 32, 40, 48, 56, 64];
+    impl ZeroMod8 for CG<0> {}
 
-    pub trait BAdd<T1, T2> {}
+    impl OneMod8 for CG<1> {}
 
-    impl TotalSizeIsMultipleOfEightBits for dyn BAdd<dyn ZeroMod8, dyn ZeroMod8> {}
+    impl TwoMod8 for CG<2> {}
 
-    impl ZeroMod8 for dyn BAdd<dyn ZeroMod8, dyn ZeroMod8> {}
+    impl ThreeMod8 for CG<3> {}
 
-    impl TotalSizeIsMultipleOfEightBits for dyn BAdd<dyn OneMod8, dyn SevenMod8> {}
+    impl FourMod8 for CG<4> {}
 
-    impl ZeroMod8 for dyn BAdd<dyn OneMod8, dyn SevenMod8> {}
+    impl FiveMod8 for CG<5> {}
+
+    impl SixMod8 for CG<6> {}
+
+    impl SevenMod8 for CG<7> {}
+
+    // fn a() {
+    //     type D = CG<{ 1 + 2 }>;
+    //     type DDD = CG<{ (B1::BITS + 2) % 2 }>;
+    // }
+
+    // #[inline]
+    // fn assert_type<C: TotalSizeIsMultipleOfEightBits + ?Sized>() {}
+    //
+    // fn a() {
+    //     assert_type::<dyn BAdd<B1, B23>>();
+    //
+    //     <B1 as Specifier>::BITS
+    // }
+    //
+    // #[macro_export]
+    // macro_rules! hoge {
+    //     // ($($t: ty),*) => {
+    //     //
+    //     // }
+    //     ($t1: ty, $t2: ty) => {
+    //         println!("{} + {}", stringify!($t1), stringify!($t2));
+    //     };
+    // }
 }
