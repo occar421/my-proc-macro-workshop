@@ -1,6 +1,7 @@
 #![feature(int_roundings)]
 
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote;
 use syn::parse_macro_input;
 
@@ -76,14 +77,36 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         });
 
+    // dbg!(&item.fields);
+    // dbg!(&field_lengths);
+    let magic_trait_name = match n_bits % 8 {
+        0 => "ZeroMod8",
+        1 => "OneMod8",
+        2 => "TwoMod8",
+        3 => "ThreeMod8",
+        4 => "FourMod8",
+        5 => "FiveMod8",
+        6 => "SixMod8",
+        7 => "SevenMod8",
+        _ => unreachable!(),
+    };
+    let _magic_trait_ident = syn::Ident::new(magic_trait_name, Span::call_site());
+
     let result = quote! {
        #[repr(C)]
         pub struct #name {
             data: [u8; #n_bytes],
         }
 
+        #[inline]
+        fn assert_type<C: ::bitfield::checks::TotalSizeIsMultipleOfEightBits + ?Sized>() {}
+
         impl #name {
             pub fn new() -> Self {
+                // assert_type::<dyn ::bitfield::checks::#magic_trait_ident>();
+                assert_type::<::bitfield::checks::BAdd<A, D>>();
+                // assert_type::<D>();
+
                 Self {
                     data: [0; #n_bytes],
                 }
