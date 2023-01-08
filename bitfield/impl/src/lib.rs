@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::parse_macro_input;
+use syn::{parse_macro_input, DeriveInput};
 
 #[proc_macro_attribute]
 pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -39,33 +39,41 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
                 };
 
                 let value_type = quote! {
-                    <bitfield::CG<{#length}> as bitfield::DeductSize>::Type
+                    <#tp as bitfield::Specifier>::Type
+                };
+
+                let from = quote! {
+                    <#tp as bitfield::Specifier>::from_be_bytes
+                };
+
+                let to = quote! {
+                    <#tp as bitfield::Specifier>::to_be_bytes
                 };
 
                 let type_bytes = quote! {
-                    (<bitfield::CG<{#length}> as bitfield::DeductSize>::BYTES)
+                    #tp::BYTES
                 };
 
                 let accessor = quote! {
                     pub fn #getter_name(&self) -> #value_type {
-                        let mut array_be = [0; #type_bytes];
+                        let mut v = vec![0; #type_bytes];
                         for i in 0..#length {
                             let data_i = i + #offset;
-                            let array_i = i + (#type_bytes * 8) - #length;
-                            if (self.data[data_i / 8] & (0x1 << ((8 - (data_i % 8)) % 8)) > 0) {
-                                array_be[array_i / 8] |= 0x1 << ((8 - (array_i % 8)) % 8);
+                            let v_i = i + (#type_bytes * 8) - #length;
+                            if self.data[data_i / 8] & (0x1 << ((8 - (data_i % 8)) % 8)) > 0 {
+                                v[v_i / 8] |= 0x1 << ((8 - (v_i % 8)) % 8);
                             }
                         }
-                        <#value_type>::from_be_bytes(array_be)
+                        #from(v)
                     }
 
                     pub fn #setter_name(&mut self, value: #value_type) {
-                        let array_be = <#value_type>::to_be_bytes(value);
+                        let v = #to(value);
                         for i in 0..#length {
                             let data_i = i + #offset;
-                            let array_i = i + (#type_bytes * 8) - (#offset + #length);
+                            let v_i = i + (#type_bytes * 8) - (#offset + #length);
                             self.data[data_i / 8] &= !(0x1 << (data_i % 8)); // reset
-                            self.data[data_i / 8] |= array_be[array_i / 8] & (0x1 << (array_i % 8));
+                            self.data[data_i / 8] |= v[v_i / 8] & (0x1 << (v_i % 8));
                         }
                     }
                 };
@@ -105,4 +113,36 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     result.into()
+}
+
+#[proc_macro_derive(BitfieldSpecifier)]
+pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let ident = input.ident;
+
+    let bits = match input.data {
+        syn::Data::Enum(de) => (de.variants.len() as f64).log2() as usize,
+        _ => unimplemented!(),
+    };
+
+    let bytes = (bits + 8 - 1) / 8; // ceil_div
+
+    let extend = quote! {
+        impl bitfield::Specifier for #ident {
+            type Type = #ident;
+            const BITS: usize = #bits;
+            const BYTES: usize = #bytes;
+
+            fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
+                unimplemented!()
+            }
+
+            fn to_be_bytes_core(value: Self::Type) -> Vec<u8> {
+                unimplemented!()
+            }
+        }
+    };
+
+    extend.into()
 }

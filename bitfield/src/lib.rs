@@ -11,54 +11,117 @@
 // From the perspective of a user of this crate, they get all the necessary APIs
 // (macro, trait, struct) through the one bitfield crate.
 pub use bitfield_impl::bitfield;
+pub use bitfield_impl::BitfieldSpecifier;
 use seq::seq;
 
 pub trait Specifier {
+    type Type;
     const BITS: usize;
+    const BYTES: usize;
+
+    fn from_be_bytes(bytes: Vec<u8>) -> Self::Type {
+        if bytes.len() != Self::BYTES {
+            unimplemented!();
+        }
+        Self::from_be_bytes_core(bytes)
+    }
+
+    fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type;
+
+    fn to_be_bytes(value: Self::Type) -> Vec<u8> {
+        let result = Self::to_be_bytes_core(value);
+        if result.len() != Self::BYTES {
+            unimplemented!();
+        }
+        result
+    }
+
+    fn to_be_bytes_core(value: Self::Type) -> Vec<u8>;
+}
+
+impl Specifier for bool {
+    type Type = bool;
+    const BITS: usize = 1;
+    const BYTES: usize = 1;
+
+    fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
+        bytes.last().unwrap() > &0
+    }
+
+    fn to_be_bytes_core(value: Self::Type) -> Vec<u8> {
+        vec![if value { 0x1 } else { 0x0 }]
+    }
 }
 
 seq! {N in 1..=64 {
     pub enum B~N {}
-
-    impl Specifier for B~N {
-        const BITS: usize = N;
-    }
 }}
 
-pub struct CG<const N: usize>;
-
-pub trait DeductSize {
-    type Type;
-    const BYTES: usize;
-}
-
 seq! { N in 1..=8 {
-    impl DeductSize for CG<N> {
+    impl Specifier for B~N {
         type Type = u8;
+        const BITS: usize = N;
         const BYTES: usize = 1;
+
+        fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
+            Self::Type::from_be_bytes(bytes.try_into().unwrap())
+        }
+
+        fn to_be_bytes_core(value: Self::Type) -> Vec<u8> {
+            value.to_be_bytes().to_vec()
+        }
     }
 }}
 
 seq! { N in 9..=16 {
-    impl DeductSize for CG<N> {
+    impl Specifier for B~N {
         type Type = u16;
+        const BITS: usize = N;
         const BYTES: usize = 2;
+
+        fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
+            Self::Type::from_be_bytes(bytes.try_into().unwrap())
+        }
+
+        fn to_be_bytes_core(value: Self::Type) -> Vec<u8> {
+            value.to_be_bytes().to_vec()
+        }
     }
 }}
 
 seq! { N in 17..=32 {
-    impl DeductSize for CG<N> {
+    impl Specifier for B~N {
         type Type = u32;
+        const BITS: usize = N;
         const BYTES: usize = 4;
+
+        fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
+            Self::Type::from_be_bytes(bytes.try_into().unwrap())
+        }
+
+        fn to_be_bytes_core(value: Self::Type) -> Vec<u8> {
+            value.to_be_bytes().to_vec()
+        }
     }
 }}
 
 seq! { N in 33..=64 {
-    impl DeductSize for CG<N> {
+    impl Specifier for B~N {
         type Type = u64;
+        const BITS: usize = N;
         const BYTES: usize = 8;
+
+        fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
+            Self::Type::from_be_bytes(bytes.try_into().unwrap())
+        }
+
+        fn to_be_bytes_core(value: Self::Type) -> Vec<u8> {
+            value.to_be_bytes().to_vec()
+        }
     }
 }}
+
+pub struct CG<const N: usize>;
 
 pub mod checks {
     use crate::CG;
