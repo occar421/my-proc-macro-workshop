@@ -91,10 +91,11 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
        #[repr(C)]
         pub struct #name {
             data: [u8; #n_bytes],
+            // a: PhantomData<CG2<0, A::BITS>>, FIXME: PhantomData では TS のような #name.a への型アクセスはできないので NG
         }
 
         impl #name where
-            <bitfield::CG1<{#n_bits % 8}> as bitfield::checks::DeductMod>::Mod
+            <bitfield::CG<{#n_bits % 8}> as bitfield::checks::DeductMod>::Mod
                 : bitfield::checks::TotalSizeIsMultipleOfEightBits {
             pub fn new() -> Self {
                 Self {

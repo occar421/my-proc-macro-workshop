@@ -25,11 +25,43 @@ seq! {N in 1..=64 {
     }
 }}
 
-pub struct CG1<const N: usize>;
-pub struct CG2<const N: usize, const M: usize>;
+pub struct CG<const N: usize>;
+
+pub trait DeductSize {
+    type Type;
+    const BYTES: usize;
+}
+
+seq! { N in 1..=8 {
+    impl DeductSize for CG<N> {
+        type Type = u8;
+        const BYTES: usize = 1;
+    }
+}}
+
+seq! { N in 9..=16 {
+    impl DeductSize for CG<N> {
+        type Type = u16;
+        const BYTES: usize = 2;
+    }
+}}
+
+seq! { N in 17..=32 {
+    impl DeductSize for CG<N> {
+        type Type = u32;
+        const BYTES: usize = 4;
+    }
+}}
+
+seq! { N in 33..=64 {
+    impl DeductSize for CG<N> {
+        type Type = u64;
+        const BYTES: usize = 8;
+    }
+}}
 
 pub mod checks {
-    use crate::CG1;
+    use crate::CG;
 
     pub trait TotalSizeIsMultipleOfEightBits {}
 
@@ -55,35 +87,35 @@ pub mod checks {
         type Mod;
     }
 
-    impl DeductMod for CG1<0> {
+    impl DeductMod for CG<0> {
         type Mod = ZeroMod8;
     }
 
-    impl DeductMod for CG1<1> {
+    impl DeductMod for CG<1> {
         type Mod = OneMod8;
     }
 
-    impl DeductMod for CG1<2> {
+    impl DeductMod for CG<2> {
         type Mod = TwoMod8;
     }
 
-    impl DeductMod for CG1<3> {
+    impl DeductMod for CG<3> {
         type Mod = ThreeMod8;
     }
 
-    impl DeductMod for CG1<4> {
+    impl DeductMod for CG<4> {
         type Mod = FourMod8;
     }
 
-    impl DeductMod for CG1<5> {
+    impl DeductMod for CG<5> {
         type Mod = FiveMod8;
     }
 
-    impl DeductMod for CG1<6> {
+    impl DeductMod for CG<6> {
         type Mod = SixMod8;
     }
 
-    impl DeductMod for CG1<7> {
+    impl DeductMod for CG<7> {
         type Mod = SevenMod8;
     }
 }
