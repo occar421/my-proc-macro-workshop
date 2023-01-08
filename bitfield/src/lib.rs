@@ -26,9 +26,6 @@ seq! {N in 1..=64 {
 }}
 
 pub mod checks {
-    use crate::*;
-    use paste::paste;
-
     pub trait TotalSizeIsMultipleOfEightBits {}
 
     pub trait ZeroMod8: TotalSizeIsMultipleOfEightBits {}
@@ -47,63 +44,25 @@ pub mod checks {
 
     pub trait SevenMod8 {}
 
-    // macro_rules! iter_b {
-    //     ($($($num:literal),* => $word:ident),*) => {
-    //         $(
-    //             iter_b!($($num)* => $word);
-    //         )*
-    //     };
-    //     ($($num:literal)* => $word:ident) => {
-    //         paste! {
-    //             $(
-    //                 impl [< $word Mod8 >] for [< B $num >] {}
-    //             )*
-    //         }
-    //     }
-    // }
-    //
-    // iter_b![
-    //     1, 9,17,25,33,41,49,57 => One,
-    //     2,10,18,26,34,42,50,58 => Two,
-    //     3,11,19,27,35,43,51,59 => Three,
-    //     4,12,20,28,36,44,52,60 => Four,
-    //     5,13,21,29,37,45,53,61 => Five,
-    //     6,14,22,30,38,46,54,62 => Six,
-    //     7,15,23,31,39,47,55,63 => Seven,
-    //     8,16,24,32,40,48,56,64 => Zero
-    // ];
-    //
-    // macro_rules! iter_mul_8 {
-    //     ($($num:literal),*) => {
-    //         paste! {
-    //             $(
-    //                 impl TotalSizeIsMultipleOfEightBits for [< B $num >] {}
-    //             )*
-    //         }
-    //     }
-    // }
-    //
-    // iter_mul_8![8, 16, 24, 32, 40, 48, 56, 64];
+    pub trait CG<const N: usize> {}
 
-    pub struct CG<const N: usize>;
+    impl TotalSizeIsMultipleOfEightBits for dyn CG<0> {}
 
-    impl TotalSizeIsMultipleOfEightBits for CG<0> {}
+    impl ZeroMod8 for dyn CG<0> {}
 
-    impl ZeroMod8 for CG<0> {}
+    impl OneMod8 for dyn CG<1> {}
 
-    impl OneMod8 for CG<1> {}
+    impl TwoMod8 for dyn CG<2> {}
 
-    impl TwoMod8 for CG<2> {}
+    impl ThreeMod8 for dyn CG<3> {}
 
-    impl ThreeMod8 for CG<3> {}
+    impl FourMod8 for dyn CG<4> {}
 
-    impl FourMod8 for CG<4> {}
+    impl FiveMod8 for dyn CG<5> {}
 
-    impl FiveMod8 for CG<5> {}
+    impl SixMod8 for dyn CG<6> {}
 
-    impl SixMod8 for CG<6> {}
-
-    impl SevenMod8 for CG<7> {}
+    impl SevenMod8 for dyn CG<7> {}
 
     // fn a() {
     //     type D = CG<{ 1 + 2 }>;

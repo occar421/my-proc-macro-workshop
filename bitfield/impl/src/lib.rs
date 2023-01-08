@@ -98,15 +98,13 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
             data: [u8; #n_bytes],
         }
 
-        type Hoge = ::bitfield::checks::CG<{(A::BITS + B::BITS + C::BITS + D::BITS) % 8}>;
-
         #[inline]
         fn assert_type<C: ::bitfield::checks::TotalSizeIsMultipleOfEightBits + ?Sized>() {}
 
         impl #name {
             pub fn new() -> Self {
                 // assert_type::<dyn ::bitfield::checks::#magic_trait_ident>();
-                assert_type::<Hoge>();
+                assert_type::<dyn ::bitfield::checks::CG<{(A::BITS + B::BITS + C::BITS + D::BITS) % 8}>>();
                 // assert_type::<D>();
                 // hoge![A, B];
 
