@@ -28,63 +28,59 @@ seq! {N in 1..=64 {
 pub mod checks {
     pub trait TotalSizeIsMultipleOfEightBits {}
 
-    pub trait ZeroMod8: TotalSizeIsMultipleOfEightBits {}
+    pub enum ZeroMod8 {}
 
-    pub trait OneMod8 {}
+    impl TotalSizeIsMultipleOfEightBits for ZeroMod8 {}
 
-    pub trait TwoMod8 {}
+    pub enum OneMod8 {}
 
-    pub trait ThreeMod8 {}
+    pub enum TwoMod8 {}
 
-    pub trait FourMod8 {}
+    pub enum ThreeMod8 {}
 
-    pub trait FiveMod8 {}
+    pub enum FourMod8 {}
 
-    pub trait SixMod8 {}
+    pub enum FiveMod8 {}
 
-    pub trait SevenMod8 {}
+    pub enum SixMod8 {}
 
-    pub trait CG<const N: usize> {}
+    pub enum SevenMod8 {}
 
-    impl TotalSizeIsMultipleOfEightBits for dyn CG<0> {}
+    pub struct CG<const N: usize>;
 
-    impl ZeroMod8 for dyn CG<0> {}
+    pub trait DeductMod {
+        type Enum;
+    }
 
-    impl OneMod8 for dyn CG<1> {}
+    impl DeductMod for CG<0> {
+        type Enum = ZeroMod8;
+    }
 
-    impl TwoMod8 for dyn CG<2> {}
+    impl DeductMod for CG<1> {
+        type Enum = OneMod8;
+    }
 
-    impl ThreeMod8 for dyn CG<3> {}
+    impl DeductMod for CG<2> {
+        type Enum = TwoMod8;
+    }
 
-    impl FourMod8 for dyn CG<4> {}
+    impl DeductMod for CG<3> {
+        type Enum = ThreeMod8;
+    }
 
-    impl FiveMod8 for dyn CG<5> {}
+    impl DeductMod for CG<4> {
+        type Enum = FourMod8;
+    }
 
-    impl SixMod8 for dyn CG<6> {}
+    impl DeductMod for CG<5> {
+        type Enum = FiveMod8;
+    }
 
-    impl SevenMod8 for dyn CG<7> {}
+    impl DeductMod for CG<6> {
+        type Enum = SixMod8;
+    }
 
-    // fn a() {
-    //     type D = CG<{ 1 + 2 }>;
-    //     type DDD = CG<{ (B1::BITS + 2) % 2 }>;
-    // }
-
-    // #[inline]
-    // fn assert_type<C: TotalSizeIsMultipleOfEightBits + ?Sized>() {}
-    //
-    // fn a() {
-    //     assert_type::<dyn BAdd<B1, B23>>();
-    //
-    //     <B1 as Specifier>::BITS
-    // }
-    //
-    // #[macro_export]
-    // macro_rules! hoge {
-    //     // ($($t: ty),*) => {
-    //     //
-    //     // }
-    //     ($t1: ty, $t2: ty) => {
-    //         println!("{} + {}", stringify!($t1), stringify!($t2));
-    //     };
-    // }
+    impl DeductMod for CG<7> {
+        type Enum = SevenMod8;
+    }
 }

@@ -1,7 +1,6 @@
 #![feature(int_roundings)]
 
 use proc_macro::TokenStream;
-use proc_macro2::Span;
 use quote::quote;
 use syn::parse_macro_input;
 
@@ -77,20 +76,10 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         });
 
-    // dbg!(&item.fields);
-    // dbg!(&field_lengths);
-    let magic_trait_name = match n_bits % 8 {
-        0 => "ZeroMod8",
-        1 => "OneMod8",
-        2 => "TwoMod8",
-        3 => "ThreeMod8",
-        4 => "FourMod8",
-        5 => "FiveMod8",
-        6 => "SixMod8",
-        7 => "SevenMod8",
-        _ => unreachable!(),
-    };
-    let _magic_trait_ident = syn::Ident::new(magic_trait_name, Span::call_site());
+    let type_paths = item.fields.iter().map(|f| match &f.ty {
+        syn::Type::Path(tp) => tp,
+        _ => unimplemented!(),
+    });
 
     let result = quote! {
        #[repr(C)]
@@ -98,22 +87,21 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
             data: [u8; #n_bytes],
         }
 
-        #[inline]
-        fn assert_type<C: ::bitfield::checks::TotalSizeIsMultipleOfEightBits + ?Sized>() {}
-
         impl #name {
             pub fn new() -> Self {
-                // assert_type::<dyn ::bitfield::checks::#magic_trait_ident>();
-                assert_type::<dyn ::bitfield::checks::CG<{(A::BITS + B::BITS + C::BITS + D::BITS) % 8}>>();
-                // assert_type::<D>();
-                // hoge![A, B];
-
                 Self {
                     data: [0; #n_bytes],
                 }
             }
 
             #(#accessors)*
+        }
+
+        #[inline]
+        fn assert_type<C: bitfield::checks::TotalSizeIsMultipleOfEightBits + ?Sized>() {}
+
+        fn a() {
+            assert_type::<<bitfield::checks::CG<{(#(#type_paths::BITS)+*) % 8}> as bitfield::checks::DeductMod>::Enum>();
         }
     };
 
