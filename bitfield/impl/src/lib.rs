@@ -1,5 +1,3 @@
-#![feature(int_roundings)]
-
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse_macro_input;
@@ -35,7 +33,7 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
         .collect();
 
     let n_bits: usize = field_lengths.iter().sum();
-    let n_bytes = n_bits.div_ceil(8);
+    let n_bytes = (n_bits + 8 - 1) / 8; // div_cel
 
     let field_names = item.fields.iter().filter_map(|f| f.ident.as_ref());
     let field_range = field_lengths.iter().scan(0, |offset, length| {

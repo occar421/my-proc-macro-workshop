@@ -1,5 +1,3 @@
-#![feature(never_type)]
-
 use proc_macro::TokenStream;
 use proc_macro2::Delimiter::Parenthesis;
 use proc_macro2::{Group, Ident, Literal, TokenStream as TokenStream2, TokenTree};
@@ -61,7 +59,7 @@ fn replace(
     let mut ts = TokenStream2::new();
 
     while let Some(t0) = iter.next() {
-        let _: ! = match &t0 {
+        match &t0 {
             TokenTree::Group(g) => {
                 let mut new_group = Group::new(
                     g.delimiter(),
