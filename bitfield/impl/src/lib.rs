@@ -32,6 +32,8 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
                 .flatten()
         })
         .collect();
+    // FIXME: `field_range` は type alias が出てきて使い物にならないので、方法を見直す
+    // CG 演算 に加えて、a b c d それぞれの length offset Phantom タイプ？
 
     let field_names = item.fields.iter().filter_map(|f| f.ident.as_ref());
     let field_range = field_lengths.iter().scan(0, |offset, length| {
@@ -92,7 +94,7 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         impl #name where
-            <bitfield::checks::CG<{#n_bits % 8}> as bitfield::checks::Deduct>::Mod
+            <bitfield::CG1<{#n_bits % 8}> as bitfield::checks::DeductMod>::Mod
                 : bitfield::checks::TotalSizeIsMultipleOfEightBits {
             pub fn new() -> Self {
                 Self {
