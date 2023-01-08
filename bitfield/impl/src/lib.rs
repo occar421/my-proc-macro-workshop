@@ -85,7 +85,9 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
             data: [u8; #n_bytes],
         }
 
-        impl #name {
+        impl #name where
+            <bitfield::checks::CG<{(#(#type_paths::BITS)+*) % 8}> as bitfield::checks::DeductMod>::Enum
+                : bitfield::checks::TotalSizeIsMultipleOfEightBits {
             pub fn new() -> Self {
                 Self {
                     data: [0; #n_bytes],
@@ -93,13 +95,6 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
             }
 
             #(#accessors)*
-        }
-
-        #[inline]
-        fn assert_type<C: bitfield::checks::TotalSizeIsMultipleOfEightBits + ?Sized>() {}
-
-        fn a() {
-            assert_type::<<bitfield::checks::CG<{(#(#type_paths::BITS)+*) % 8}> as bitfield::checks::DeductMod>::Enum>();
         }
     };
 
