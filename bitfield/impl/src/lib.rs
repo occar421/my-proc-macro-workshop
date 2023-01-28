@@ -22,68 +22,75 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
         syn::Type::Path(tp) => tp,
         _ => unimplemented!(),
     });
-    let accessors =
-        field_names
-            .zip(type_paths.clone())
-            .into_iter()
-            .scan(quote! { 0 }, |prev, (i, tp)| {
-                let getter_name = syn::Ident::new(&format!("get_{}", i), i.span());
-                let setter_name = syn::Ident::new(&format!("set_{}", i), i.span());
+    let accessors = field_names.zip(type_paths.clone()).into_iter().scan(
+        quote! { 0 },
+        |prev, (i, tp)| {
+            let getter_name = syn::Ident::new(&format!("get_{}", i), i.span());
+            let setter_name = syn::Ident::new(&format!("set_{}", i), i.span());
 
-                let length = quote! {
-                    #tp::BITS
-                };
+            let length = quote! {
+                #tp::BITS
+            };
 
-                let offset = quote! {
-                    #prev
-                };
+            let data_offset = quote! {
+                #prev
+            };
 
-                let value_type = quote! {
-                    <#tp as bitfield::Specifier>::Type
-                };
+            let v_bits_offset = quote! {
+                (8 - (#tp::BITS % 8))
+            };
 
-                let from = quote! {
-                    <#tp as bitfield::Specifier>::from_be_bytes
-                };
+            let value_type = quote! {
+                <#tp as bitfield::Specifier>::Type
+            };
 
-                let to = quote! {
-                    <#tp as bitfield::Specifier>::to_be_bytes
-                };
+            let from = quote! {
+                <#tp as bitfield::Specifier>::from_be_bytes
+            };
 
-                let type_bytes = quote! {
-                    #tp::BYTES
-                };
+            let to = quote! {
+                <#tp as bitfield::Specifier>::to_be_bytes
+            };
 
-                let accessor = quote! {
-                    pub fn #getter_name(&self) -> #value_type {
-                        let mut v = vec![0; #type_bytes];
-                        for i in 0..#length {
-                            let data_i = i + #offset;
-                            let v_i = i + (#type_bytes * 8) - #length;
-                            if self.data[data_i / 8] & (0x1 << ((8 - (data_i % 8)) % 8)) > 0 {
-                                v[v_i / 8] |= 0x1 << ((8 - (v_i % 8)) % 8);
-                            }
-                        }
-                        #from(v)
-                    }
+            let type_bytes = quote! {
+                (#tp::BITS + 8 - 1) / 8
+            };
 
-                    pub fn #setter_name(&mut self, value: #value_type) {
-                        let v = #to(value);
-                        for i in 0..#length {
-                            let data_i = i + #offset;
-                            let v_i = i + (#type_bytes * 8) - (#offset + #length);
-                            self.data[data_i / 8] &= !(0x1 << (data_i % 8)); // reset
-                            self.data[data_i / 8] |= v[v_i / 8] & (0x1 << (v_i % 8));
+            // FIXME: (#type_bytes * 8) は 偶然正しかった可能性がある
+            // u64 ということで 64 => 8 * 8
+            // acknowledged の場合、 初回の v_i は最上位ビットでない可能性がある
+
+            let accessor = quote! {
+                pub fn #getter_name(&self) -> #value_type {
+                    let mut v = vec![0; #type_bytes];
+                    for i in 0..#length {
+                        let data_i = #data_offset + i;
+                        let v_i = (#type_bytes * 8) - #length + i;
+                        if self.data[data_i / 8] & (0x1 << ((8 - (data_i % 8)) % 8)) > 0 {
+                            v[v_i / 8] |= 0x1 << ((8 - (v_i % 8)) % 8);
                         }
                     }
-                };
+                    #from(v)
+                }
 
-                *prev = quote! {
-                    (#offset + #length)
-                };
+                pub fn #setter_name(&mut self, value: #value_type) {
+                    let v = #to(value);
+                    for i in 0..#length {
+                        let data_i = #data_offset + i;
+                        let v_i = (#type_bytes * 8) - (#data_offset + #length) + i;
+                        self.data[data_i / 8] &= !(0x1 << (#v_bits_offset + (data_i % 8))); // reset
+                        self.data[data_i / 8] |= ((v[v_i / 8] << #v_bits_offset) & (0x1 << (v_i % 8)));
+                    }
+                }
+            };
 
-                Some(accessor)
-            });
+            *prev = quote! {
+                (#data_offset + #length)
+            };
+
+            Some(accessor)
+        },
+    );
 
     let n_bits = quote! {
         (#(#type_paths::BITS)+*)
@@ -119,27 +126,35 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
 pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
-    let ident = input.ident;
+    let name_ident = input.ident;
 
-    let bits = match input.data {
-        syn::Data::Enum(de) => (de.variants.len() as f64).log2() as usize,
+    let variants = match input.data {
+        syn::Data::Enum(de) => de.variants,
         _ => unimplemented!(),
     };
 
-    let bytes = (bits + 8 - 1) / 8; // ceil_div
+    let bits = (variants.len() as f64).log2() as usize;
+    let idents = variants.iter().map(|v| &v.ident);
+    let literals = variants.iter().map(|v| v.discriminant.clone().unwrap().1);
 
     let extend = quote! {
-        impl bitfield::Specifier for #ident {
-            type Type = #ident;
+        impl bitfield::Specifier for #name_ident {
+            type Type = #name_ident;
             const BITS: usize = #bits;
-            const BYTES: usize = #bytes;
 
             fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
-                unimplemented!()
+                if bytes.len() != 1 {
+                    unimplemented!();
+                }
+                let value = bytes[0];
+                match value {
+                    #(#literals => #name_ident::#idents,)*
+                    _ => unimplemented!(),
+                }
             }
 
             fn to_be_bytes_core(value: Self::Type) -> Vec<u8> {
-                unimplemented!()
+                vec![value as u8]
             }
         }
     };
