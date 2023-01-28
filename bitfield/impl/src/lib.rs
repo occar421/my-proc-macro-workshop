@@ -58,32 +58,32 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
                     #tp::BYTES
                 };
 
-                // FIXME: (#type_bytes * 8) は 偶然正しかった可能性がある
-                // u64 ということで 64 => 8 * 8
-                // acknowledged の場合、 初回の v_i は最上位ビットでない可能性がある
-
                 let accessor = quote! {
                     pub fn #getter_name(&self) -> #value_type {
-                        dbg!(&self.data);
-
-                        let mut v = vec![0; #type_bytes];
+                        let mut val = vec![0; #type_bytes];
                         for i in 0..#length {
                             let data_i = #data_offset + i;
-                            let v_i = (#type_bytes * 8) - #length + i;
-                            if self.data[data_i / 8] & (0x1 << ((8 - (data_i % 8)) % 8)) > 0 {
-                                v[v_i / 8] |= 0x1 << ((8 - (v_i % 8)) % 8);
+                            let val_i = #vec_bits_offset + i;
+
+                            let data_vec_i = data_i / 8;
+                            let data_bits_i = 7 - data_i % 8;
+                            let val_vec_i = val_i / 8;
+                            let val_bits_i = 7 - val_i % 8;
+
+                            let has_bit = (self.data[data_vec_i] & 0x1 << data_bits_i) > 0;
+
+                            if has_bit {
+                                val[val_vec_i] |= 0x1 << val_bits_i;
                             }
                         }
-                        #from(v)
+                        #from(val)
                     }
 
                     pub fn #setter_name(&mut self, value: #value_type) {
-                        const vec_bits_offset: usize = #vec_bits_offset;
-
                         let val = #to(value);
                         for i in 0..#length {
                             let data_i = #data_offset + i;
-                            let val_i = vec_bits_offset + i;
+                            let val_i = #vec_bits_offset + i;
 
                             let data_vec_i = data_i / 8;
                             let data_bits_i = 7 - data_i % 8;
