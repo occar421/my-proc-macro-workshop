@@ -159,7 +159,7 @@ pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
             const BITS: usize = #bits;
 
             fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
-                if bytes.len() != 1 {
+                if bytes.len() != Self::BYTES {
                     unimplemented!();
                 }
                 let value = bytes[0];
