@@ -14,16 +14,17 @@ pub use bitfield_impl::bitfield;
 pub use bitfield_impl::BitfieldSpecifier;
 use seq::seq;
 
-fn div_ceil(n: usize, m: usize) -> usize {
+const fn div_ceil(n: usize, m: usize) -> usize {
     (n + m - 1) / m
 }
 
 pub trait Specifier {
     type Type;
     const BITS: usize;
+    const BYTES: usize = div_ceil(Self::BITS, 8);
 
     fn from_be_bytes(bytes: Vec<u8>) -> Self::Type {
-        if bytes.len() != div_ceil(Self::BITS, 8) {
+        if bytes.len() != Self::BYTES {
             unimplemented!();
         }
         Self::from_be_bytes_core(bytes)
@@ -33,7 +34,7 @@ pub trait Specifier {
 
     fn to_be_bytes(value: Self::Type) -> Vec<u8> {
         let result = Self::to_be_bytes_core(value);
-        if result.len() != div_ceil(Self::BITS, 8) {
+        if result.len() != Self::BYTES {
             unimplemented!();
         }
         result
@@ -63,6 +64,7 @@ seq! { N in 1..=8 {
     impl Specifier for B~N {
         type Type = u8;
         const BITS: usize = N;
+        const BYTES: usize = 1;
 
         fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
             Self::Type::from_be_bytes(bytes.try_into().unwrap())
@@ -78,6 +80,7 @@ seq! { N in 9..=16 {
     impl Specifier for B~N {
         type Type = u16;
         const BITS: usize = N;
+        const BYTES: usize = 2;
 
         fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
             Self::Type::from_be_bytes(bytes.try_into().unwrap())
@@ -93,6 +96,7 @@ seq! { N in 17..=32 {
     impl Specifier for B~N {
         type Type = u32;
         const BITS: usize = N;
+        const BYTES: usize = 4;
 
         fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
             Self::Type::from_be_bytes(bytes.try_into().unwrap())
@@ -108,6 +112,7 @@ seq! { N in 33..=64 {
     impl Specifier for B~N {
         type Type = u64;
         const BITS: usize = N;
+        const BYTES: usize = 8;
 
         fn from_be_bytes_core(bytes: Vec<u8>) -> Self::Type {
             Self::Type::from_be_bytes(bytes.try_into().unwrap())

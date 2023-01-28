@@ -22,75 +22,91 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
         syn::Type::Path(tp) => tp,
         _ => unimplemented!(),
     });
-    let accessors = field_names.zip(type_paths.clone()).into_iter().scan(
-        quote! { 0 },
-        |prev, (i, tp)| {
-            let getter_name = syn::Ident::new(&format!("get_{}", i), i.span());
-            let setter_name = syn::Ident::new(&format!("set_{}", i), i.span());
+    let accessors =
+        field_names
+            .zip(type_paths.clone())
+            .into_iter()
+            .scan(quote! { 0 }, |prev, (i, tp)| {
+                let getter_name = syn::Ident::new(&format!("get_{}", i), i.span());
+                let setter_name = syn::Ident::new(&format!("set_{}", i), i.span());
 
-            let length = quote! {
-                #tp::BITS
-            };
+                let length = quote! {
+                    #tp::BITS
+                };
 
-            let data_offset = quote! {
-                #prev
-            };
+                let data_offset = quote! {
+                    #prev
+                };
 
-            let v_bits_offset = quote! {
-                (8 - (#tp::BITS % 8))
-            };
+                let vec_bits_offset = quote! {
+                    (#tp::BYTES * 8 - #tp::BITS)
+                };
 
-            let value_type = quote! {
-                <#tp as bitfield::Specifier>::Type
-            };
+                let value_type = quote! {
+                    <#tp as bitfield::Specifier>::Type
+                };
 
-            let from = quote! {
-                <#tp as bitfield::Specifier>::from_be_bytes
-            };
+                let from = quote! {
+                    <#tp as bitfield::Specifier>::from_be_bytes
+                };
 
-            let to = quote! {
-                <#tp as bitfield::Specifier>::to_be_bytes
-            };
+                let to = quote! {
+                    <#tp as bitfield::Specifier>::to_be_bytes
+                };
 
-            let type_bytes = quote! {
-                (#tp::BITS + 8 - 1) / 8
-            };
+                let type_bytes = quote! {
+                    #tp::BYTES
+                };
 
-            // FIXME: (#type_bytes * 8) は 偶然正しかった可能性がある
-            // u64 ということで 64 => 8 * 8
-            // acknowledged の場合、 初回の v_i は最上位ビットでない可能性がある
+                // FIXME: (#type_bytes * 8) は 偶然正しかった可能性がある
+                // u64 ということで 64 => 8 * 8
+                // acknowledged の場合、 初回の v_i は最上位ビットでない可能性がある
 
-            let accessor = quote! {
-                pub fn #getter_name(&self) -> #value_type {
-                    let mut v = vec![0; #type_bytes];
-                    for i in 0..#length {
-                        let data_i = #data_offset + i;
-                        let v_i = (#type_bytes * 8) - #length + i;
-                        if self.data[data_i / 8] & (0x1 << ((8 - (data_i % 8)) % 8)) > 0 {
-                            v[v_i / 8] |= 0x1 << ((8 - (v_i % 8)) % 8);
+                let accessor = quote! {
+                    pub fn #getter_name(&self) -> #value_type {
+                        dbg!(&self.data);
+
+                        let mut v = vec![0; #type_bytes];
+                        for i in 0..#length {
+                            let data_i = #data_offset + i;
+                            let v_i = (#type_bytes * 8) - #length + i;
+                            if self.data[data_i / 8] & (0x1 << ((8 - (data_i % 8)) % 8)) > 0 {
+                                v[v_i / 8] |= 0x1 << ((8 - (v_i % 8)) % 8);
+                            }
+                        }
+                        #from(v)
+                    }
+
+                    pub fn #setter_name(&mut self, value: #value_type) {
+                        const vec_bits_offset: usize = #vec_bits_offset;
+
+                        let val = #to(value);
+                        for i in 0..#length {
+                            let data_i = #data_offset + i;
+                            let val_i = vec_bits_offset + i;
+
+                            let data_vec_i = data_i / 8;
+                            let data_bits_i = 7 - data_i % 8;
+                            let val_vec_i = val_i / 8;
+                            let val_bits_i = 7 - val_i % 8;
+
+                            let has_bit = (val[val_vec_i] & (0x1 << val_bits_i)) > 0;
+                            if has_bit {
+                                self.data[data_vec_i] |= 0x1 << data_bits_i;
+                            } else {
+                                // reset
+                                self.data[data_vec_i] &= !(0x1 << data_bits_i);
+                            }
                         }
                     }
-                    #from(v)
-                }
+                };
 
-                pub fn #setter_name(&mut self, value: #value_type) {
-                    let v = #to(value);
-                    for i in 0..#length {
-                        let data_i = #data_offset + i;
-                        let v_i = (#type_bytes * 8) - (#data_offset + #length) + i;
-                        self.data[data_i / 8] &= !(0x1 << (#v_bits_offset + (data_i % 8))); // reset
-                        self.data[data_i / 8] |= ((v[v_i / 8] << #v_bits_offset) & (0x1 << (v_i % 8)));
-                    }
-                }
-            };
+                *prev = quote! {
+                    (#data_offset + #length)
+                };
 
-            *prev = quote! {
-                (#data_offset + #length)
-            };
-
-            Some(accessor)
-        },
-    );
+                Some(accessor)
+            });
 
     let n_bits = quote! {
         (#(#type_paths::BITS)+*)
