@@ -124,10 +124,11 @@ seq! { N in 33..=64 {
     }
 }}
 
-pub enum CG<const N: usize> {}
+pub enum CGUsize<const N: usize> {}
+pub enum CGBool<const B: bool> {}
 
 pub mod checks {
-    use crate::CG;
+    use crate::{CGBool, CGUsize};
 
     pub trait TotalSizeIsMultipleOfEightBits {}
 
@@ -153,35 +154,55 @@ pub mod checks {
         type Mod;
     }
 
-    impl DeductMod for CG<0> {
+    impl DeductMod for CGUsize<0> {
         type Mod = ZeroMod8;
     }
 
-    impl DeductMod for CG<1> {
+    impl DeductMod for CGUsize<1> {
         type Mod = OneMod8;
     }
 
-    impl DeductMod for CG<2> {
+    impl DeductMod for CGUsize<2> {
         type Mod = TwoMod8;
     }
 
-    impl DeductMod for CG<3> {
+    impl DeductMod for CGUsize<3> {
         type Mod = ThreeMod8;
     }
 
-    impl DeductMod for CG<4> {
+    impl DeductMod for CGUsize<4> {
         type Mod = FourMod8;
     }
 
-    impl DeductMod for CG<5> {
+    impl DeductMod for CGUsize<5> {
         type Mod = FiveMod8;
     }
 
-    impl DeductMod for CG<6> {
+    impl DeductMod for CGUsize<6> {
         type Mod = SixMod8;
     }
 
-    impl DeductMod for CG<7> {
+    impl DeductMod for CGUsize<7> {
         type Mod = SevenMod8;
+    }
+
+    pub trait DiscriminantInRange {}
+
+    pub enum True {}
+
+    pub enum False {}
+
+    impl DiscriminantInRange for True {}
+
+    pub trait DeductPowOf2 {
+        type IsPowOf2;
+    }
+
+    impl DeductPowOf2 for CGBool<true> {
+        type IsPowOf2 = True;
+    }
+
+    impl DeductPowOf2 for CGBool<false> {
+        type IsPowOf2 = False;
     }
 }

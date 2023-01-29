@@ -124,7 +124,7 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         impl #name where
-            <bitfield::CG<{#n_bits % 8}> as bitfield::checks::DeductMod>::Mod
+            <bitfield::CGUsize<{#n_bits % 8}> as bitfield::checks::DeductMod>::Mod
                 : bitfield::checks::TotalSizeIsMultipleOfEightBits {
             pub fn new() -> Self {
                 Self {
@@ -151,9 +151,9 @@ pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
     };
 
     let bits = variants.len().ilog2();
-    let idents = variants.iter().map(|v| &v.ident);
+    let variant_idents: Vec<_> = variants.iter().map(|v| &v.ident).collect();
 
-    if 2usize.pow(bits) != idents.len() {
+    if 2usize.pow(bits) != variant_idents.len() {
         // Non power of two
         return syn::Error::new(
             Span::call_site(),
@@ -165,8 +165,12 @@ pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
 
     let bits = bits as usize;
 
+    let expected_variant_max = variant_idents.len() - 1;
+
     let extend = quote! {
-        impl bitfield::Specifier for #name_ident {
+        impl bitfield::Specifier for #name_ident where
+            #(<bitfield::CGBool<{#name_ident::#variant_idents as usize <= #expected_variant_max}> as bitfield::checks::DeductPowOf2>::IsPowOf2
+                : bitfield::checks::DiscriminantInRange,)* {
             type Type = #name_ident;
             const BITS: usize = #bits;
 
@@ -176,7 +180,7 @@ pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
                 }
                 let value = bytes[0];
                 match value {
-                    #(_ if #name_ident::#idents as u8 == value => #name_ident::#idents,)*
+                    #(_ if #name_ident::#variant_idents as u8 == value => #name_ident::#variant_idents,)*
                     _ => unimplemented!(),
                 }
             }
