@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
 
@@ -149,8 +150,20 @@ pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
         _ => unimplemented!(),
     };
 
-    let bits = variants.len().ilog2() as usize;
+    let bits = variants.len().ilog2();
     let idents = variants.iter().map(|v| &v.ident);
+
+    if 2usize.pow(bits) != idents.len() {
+        // Non power of two
+        return syn::Error::new(
+            Span::call_site(),
+            "BitfieldSpecifier expected a number of variants which is a power of 2",
+        )
+        .into_compile_error()
+        .into();
+    }
+
+    let bits = bits as usize;
 
     let extend = quote! {
         impl bitfield::Specifier for #name_ident {
