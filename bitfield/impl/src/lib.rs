@@ -105,18 +105,24 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
         Some((ident, ty, lit))
     });
 
-    let bits_size_checks = bits_attributes.map(|(ident, ty, lit)| {
+    let bits_size_field_checks = bits_attributes.map(|(ident, ty, lit)| {
         let check_const_name = format!("_BITS_SIZE_CHECK_FOR_{}", ident.to_string().to_uppercase());
-        let name = syn::Ident::new(&check_const_name, Span::call_site());
-
-        let v: usize = lit.base10_parse().unwrap();
-        let range = 0..v;
+        let check_const_ident = syn::Ident::new(&check_const_name, Span::call_site());
 
         quote_spanned! {lit.span() =>
             #[doc(hidden)]
-            const #name: [usize; <#ty as bitfield::Specifier>::BITS] = [#(#range,)*];
+            const #check_const_ident: [(); #lit] = Self::_bits_size_check_pseudo_gen::<{<#ty as bitfield::Specifier>::BITS}>();
         }
     });
+
+    let bits_size_check_part = quote! {
+        #[doc(hidden)]
+        const fn _bits_size_check_pseudo_gen<const N: usize>() -> [(); N] {
+            unreachable!()
+        }
+
+        #(#bits_size_field_checks)*
+    };
 
     let n_bits = quote! { (#(#type_paths::BITS)+*) };
     let n_bytes = quote! { ((#n_bits) + 8 - 1) / 8 }; // div_ceil
@@ -130,7 +136,7 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
         impl #name where
             <bitfield::CGUsize<{#n_bits % 8}> as bitfield::checks::DeductMod>::Mod
                 : bitfield::checks::TotalSizeIsMultipleOfEightBits {
-            #(#bits_size_checks)*
+            #bits_size_check_part
 
             pub fn new() -> Self {
                 Self {
