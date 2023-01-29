@@ -31,33 +31,18 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
                 let getter_name = syn::Ident::new(&format!("get_{}", i), i.span());
                 let setter_name = syn::Ident::new(&format!("set_{}", i), i.span());
 
-                let length = quote! {
-                    #tp::BITS
-                };
+                let length = quote! { #tp::BITS };
 
-                let data_offset = quote! {
-                    #prev
-                };
+                let data_offset = quote! { #prev };
 
-                let vec_bits_offset = quote! {
-                    (#tp::BYTES * 8 - #tp::BITS)
-                };
+                let vec_bits_offset = quote! { (#tp::BYTES * 8 - #tp::BITS) };
 
-                let value_type = quote! {
-                    <#tp as bitfield::Specifier>::Type
-                };
+                let value_type = quote! { <#tp as bitfield::Specifier>::Type };
 
-                let from = quote! {
-                    <#tp as bitfield::Specifier>::from_be_bytes
-                };
+                let from = quote! { <#tp as bitfield::Specifier>::from_be_bytes };
+                let to = quote! { <#tp as bitfield::Specifier>::to_be_bytes };
 
-                let to = quote! {
-                    <#tp as bitfield::Specifier>::to_be_bytes
-                };
-
-                let type_bytes = quote! {
-                    #tp::BYTES
-                };
+                let type_bytes = quote! { #tp::BYTES };
 
                 let accessor = quote! {
                     pub fn #getter_name(&self) -> #value_type {
@@ -102,20 +87,13 @@ pub fn bitfield(args: TokenStream, input: TokenStream) -> TokenStream {
                     }
                 };
 
-                *prev = quote! {
-                    (#data_offset + #length)
-                };
+                *prev = quote! { (#data_offset + #length) };
 
                 Some(accessor)
             });
 
-    let n_bits = quote! {
-        (#(#type_paths::BITS)+*)
-    };
-
-    let n_bytes = quote! {
-        ((#n_bits) + 8 - 1) / 8
-    }; // div_ceil
+    let n_bits = quote! { (#(#type_paths::BITS)+*) };
+    let n_bytes = quote! { ((#n_bits) + 8 - 1) / 8 }; // div_ceil
 
     let result = quote! {
        #[repr(C)]
