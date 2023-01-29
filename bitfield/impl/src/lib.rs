@@ -149,7 +149,7 @@ pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
         _ => unimplemented!(),
     };
 
-    let bits = (variants.len() as f64).log2() as usize;
+    let bits = variants.len().ilog2() as usize;
     let idents = variants.iter().map(|v| &v.ident);
     let literals = variants.iter().map(|v| v.discriminant.clone().unwrap().1);
 
