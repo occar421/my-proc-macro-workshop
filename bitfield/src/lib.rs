@@ -194,15 +194,15 @@ pub mod checks {
 
     impl DiscriminantInRange for True {}
 
-    pub trait DeductPowOf2 {
+    pub trait DeductIsPowOf2 {
         type IsPowOf2;
     }
 
-    impl DeductPowOf2 for CGBool<true> {
+    impl DeductIsPowOf2 for CGBool<true> {
         type IsPowOf2 = True;
     }
 
-    impl DeductPowOf2 for CGBool<false> {
+    impl DeductIsPowOf2 for CGBool<false> {
         type IsPowOf2 = False;
     }
 }

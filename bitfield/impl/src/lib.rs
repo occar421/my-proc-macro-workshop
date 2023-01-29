@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::{parse_macro_input, DeriveInput};
 
 #[proc_macro_attribute]
@@ -167,10 +167,13 @@ pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
 
     let expected_variant_max = variant_idents.len() - 1;
 
+    let out_of_range_checks = variant_idents.iter().map(|ident| quote_spanned!{ident.span() =>
+        <bitfield::CGBool<{#name_ident::#ident as usize <= #expected_variant_max}> as bitfield::checks::DeductIsPowOf2>::IsPowOf2: bitfield::checks::DiscriminantInRange
+    });
+
     let extend = quote! {
         impl bitfield::Specifier for #name_ident where
-            #(<bitfield::CGBool<{#name_ident::#variant_idents as usize <= #expected_variant_max}> as bitfield::checks::DeductPowOf2>::IsPowOf2
-                : bitfield::checks::DiscriminantInRange,)* {
+            #(#out_of_range_checks,)* {
             type Type = #name_ident;
             const BITS: usize = #bits;
 
