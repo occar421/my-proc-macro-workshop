@@ -151,7 +151,6 @@ pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
 
     let bits = variants.len().ilog2() as usize;
     let idents = variants.iter().map(|v| &v.ident);
-    let literals = variants.iter().map(|v| v.discriminant.clone().unwrap().1);
 
     let extend = quote! {
         impl bitfield::Specifier for #name_ident {
@@ -164,7 +163,7 @@ pub fn bitfield_specifier(input: TokenStream) -> TokenStream {
                 }
                 let value = bytes[0];
                 match value {
-                    #(#literals => #name_ident::#idents,)*
+                    #(_ if #name_ident::#idents as u8 == value => #name_ident::#idents,)*
                     _ => unimplemented!(),
                 }
             }
